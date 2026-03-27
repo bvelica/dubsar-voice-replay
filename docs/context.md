@@ -32,6 +32,8 @@ The initial version should prioritize:
 - Backend: Python
 - API framework: FastAPI
 - Lower-level languages such as Go or Rust are acceptable later for isolated performance-sensitive components
+- Moonshine upstream repo: `moonshine-ai/moonshine`
+- Initial speech path: use Moonshine's Python microphone transcription flow as the reference integration
 
 ## Release Tracking
 
@@ -41,7 +43,7 @@ The initial version should prioritize:
 
 ## Open Product Questions
 
-- Where audio capture should happen in v1: browser, local process, or both
+- Whether browser-based audio capture should be added after the initial local microphone version
 - Whether action triggering should be fully automatic or gated
 - What MCP should expose first: transcript history, live subscription, tools, or some combination
 - What the first concrete supported actions should be

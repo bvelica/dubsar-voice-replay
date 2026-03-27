@@ -37,3 +37,13 @@ http://localhost:8000
 
 - This project is intended for English-only Moonshine usage.
 - It is designed for local deployment and simple integration with AI-agent workflows through MCP.
+
+## Development
+
+Create a virtual environment and install dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
