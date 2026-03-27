@@ -33,6 +33,12 @@ The initial version should prioritize:
 - API framework: FastAPI
 - Lower-level languages such as Go or Rust are acceptable later for isolated performance-sensitive components
 
+## Release Tracking
+
+- The canonical app version lives in `VERSION`.
+- Human-readable release history lives in `CHANGELOG.md`.
+- Git history records code changes, while tags can mark release points.
+
 ## Open Product Questions
 
 - Where audio capture should happen in v1: browser, local process, or both

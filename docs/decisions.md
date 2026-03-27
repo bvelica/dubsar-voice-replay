@@ -18,3 +18,13 @@ This file records decisions that should persist across sessions.
 
 - Decision: Introduce Go or Rust only if a specific subsystem proves to need lower-level optimization.
 - Reason: Early multi-language complexity would slow iteration without clear evidence of need.
+
+### Versioning Strategy
+
+- Decision: Track the app version in a top-level `VERSION` file and maintain release notes in `CHANGELOG.md`.
+- Reason: Git history alone is not a clean product-versioning mechanism; explicit version and changelog files make milestones and releases easier to manage.
+
+### Versioning Scheme
+
+- Decision: Use Semantic Versioning.
+- Reason: It is simple, standard, and a good fit for an application that may become public and distributed.
