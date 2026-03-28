@@ -38,3 +38,13 @@ This file records decisions that should persist across sessions.
 
 - Decision: Build on the `moonshine-ai/moonshine` repository and its Python package flow.
 - Reason: It is the canonical upstream for Moonshine Voice and explicitly supports real-time microphone transcription.
+
+### Runtime Model
+
+- Decision: Keep v0/v1 host-native instead of introducing Docker early.
+- Reason: Direct microphone access and fast iteration are more important right now than container packaging.
+
+### Audio Integration Detail
+
+- Decision: Use a direct `sounddevice` microphone capture path that feeds audio into Moonshine's streaming transcriber.
+- Reason: This gives better observability and proved more reliable for debugging than treating the upstream microphone wrapper as a black box.

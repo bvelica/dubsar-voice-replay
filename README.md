@@ -7,36 +7,7 @@ A small local-first voice-to-action server that uses Moonshine AI for live Engli
 - Live English speech-to-text with Moonshine AI
 - Real-time transcript display in a web interface
 - MCP integration for AI agents
-- Docker-based local deployment
 - Local-first workflow for low-latency voice interactions
-
-## Quick start with Docker
-
-### Build the image
-
-```bash
-docker build -t voice-to-action .
-```
-
-### Run the container
-
-```bash
-docker run --rm -it \
-  -p 8000:8000 \
-  --name voice-to-action \
-  voice-to-action
-```
-
-### Open the app
-
-```text
-http://localhost:8000
-```
-
-## Notes
-
-- This project is intended for English-only Moonshine usage.
-- It is designed for local deployment and simple integration with AI-agent workflows through MCP.
 
 ## Development
 
@@ -47,3 +18,45 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+Download the default English Moonshine model into a repo-local cache:
+
+```bash
+XDG_CACHE_HOME=$PWD/.cache python -m moonshine_voice.download --language en
+```
+
+Run the FastAPI app:
+
+```bash
+XDG_CACHE_HOME=$PWD/.cache uvicorn app.main:app --reload
+```
+
+Open the app locally at `http://127.0.0.1:8000`.
+
+On startup, the server will attempt to start the Moonshine microphone transcriber automatically. The home page shows component status and live transcript updates.
+
+The current working path is:
+
+1. capture microphone audio with `sounddevice`
+2. feed that audio into Moonshine's streaming transcriber
+3. keep transcript state in memory
+4. stream transcript updates to the browser over WebSocket
+
+Useful endpoints:
+
+- `GET /health`
+- `GET /api/status`
+- `GET /api/transcript`
+- `WS /ws/transcript`
+
+Optional manual controls remain available:
+
+- `POST /api/transcriber/start`
+- `POST /api/transcriber/stop`
+
+## Notes
+
+- This project is intended for English-only Moonshine usage.
+- It is designed for local deployment and simple integration with AI-agent workflows through MCP.
+- Microphone access is expected to work best in a normal host session, not in a restricted sandbox.
+- The current implementation is host-native and intentionally keeps the setup simple instead of using Docker.

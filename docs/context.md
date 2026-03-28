@@ -34,6 +34,7 @@ The initial version should prioritize:
 - Lower-level languages such as Go or Rust are acceptable later for isolated performance-sensitive components
 - Moonshine upstream repo: `moonshine-ai/moonshine`
 - Initial speech path: use Moonshine's Python microphone transcription flow as the reference integration
+- Current implementation path: host-native `sounddevice` microphone capture feeding Moonshine's streaming transcriber
 
 ## Release Tracking
 
@@ -47,3 +48,4 @@ The initial version should prioritize:
 - Whether action triggering should be fully automatic or gated
 - What MCP should expose first: transcript history, live subscription, tools, or some combination
 - What the first concrete supported actions should be
+- How much transcript history and diagnostic information should remain visible in the UI
