@@ -48,4 +48,3 @@ The initial version should prioritize:
 - Whether action triggering should be fully automatic or gated
 - What MCP should expose first: transcript history, live subscription, tools, or some combination
 - What the first concrete supported actions should be
-- How much transcript history and diagnostic information should remain visible in the UI

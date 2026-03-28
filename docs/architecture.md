@@ -19,7 +19,7 @@ Core areas:
 - `app/moonshine_service.py` captures microphone audio with `sounddevice` and feeds it into Moonshine's streaming transcriber.
 - `app/transcript_store.py` is the in-memory source of truth for transcript state.
 - `ws/transcript` streams transcript updates from the shared store.
-- `app/ui.py` serves the minimal host-native UI with status and live transcript output.
+- `app/ui.py` serves the minimal host-native UI with a status bar and the 10 most recent transcript lines.
 
 ## Proposed v1 Event Flow
 

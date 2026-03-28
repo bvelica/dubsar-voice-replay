@@ -12,162 +12,133 @@ INDEX_HTML = """<!doctype html>
     <style>
       :root {
         color-scheme: light;
-        --bg: #f6f1e8;
-        --panel: #fffdf8;
-        --ink: #1d241f;
-        --muted: #5a675f;
-        --border: #d7cbb8;
-        --good: #1d7a43;
-        --bad: #b0442f;
-        --warn: #9c6a14;
-        --accent: #174c3c;
+        --bg: #ffffff;
+        --panel: #fafafa;
+        --ink: #111111;
+        --muted: #4b5563;
+        --border: #cbd5e1;
+        --good: #177245;
+        --bad: #c0392b;
+        --warn: #a16207;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
-        background:
-          radial-gradient(circle at top left, rgba(23, 76, 60, 0.10), transparent 30%),
-          linear-gradient(180deg, #f8f3ea 0%, var(--bg) 100%);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        background: var(--bg);
         color: var(--ink);
       }
       main {
-        max-width: 920px;
+        max-width: 980px;
         margin: 0 auto;
-        padding: 32px 20px 64px;
-      }
-      h1 {
-        margin: 0 0 8px;
-        font-size: clamp(2rem, 4vw, 3.5rem);
-        line-height: 0.95;
-      }
-      p.lead {
-        margin: 0 0 24px;
-        max-width: 680px;
-        color: var(--muted);
-        font-size: 1.05rem;
+        padding: 20px 16px;
       }
       .statusbar, .panel {
-        background: color-mix(in srgb, var(--panel) 92%, white);
+        background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 18px;
-        box-shadow: 0 10px 30px rgba(29, 36, 31, 0.06);
+        border-radius: 10px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
       }
       .statusbar {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
-        padding: 14px;
-        margin-bottom: 20px;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        padding: 10px;
+        margin-bottom: 12px;
       }
       .status-card {
-        padding: 12px 14px;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.65);
-        border: 1px solid rgba(215, 203, 184, 0.7);
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid #d7dee7;
       }
       .label {
         display: block;
-        font-size: 0.78rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: var(--muted);
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
       .value {
-        font-size: 1rem;
+        font-size: 0.95rem;
         font-weight: 700;
       }
       .ok { color: var(--good); }
       .bad { color: var(--bad); }
       .warn { color: var(--warn); }
       .panel {
-        padding: 22px;
-      }
-      .diagnostics {
-        margin-top: 16px;
-        padding-top: 14px;
-        border-top: 1px solid rgba(215, 203, 184, 0.75);
-      }
-      .diagnostics code {
-        display: block;
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: rgba(29, 36, 31, 0.05);
-        border: 1px solid rgba(215, 203, 184, 0.75);
-        overflow-x: auto;
-        white-space: pre-wrap;
+        padding: 12px;
       }
       .panel-header {
         display: flex;
         justify-content: space-between;
-        gap: 16px;
+        gap: 12px;
         align-items: baseline;
-        margin-bottom: 18px;
+        margin-bottom: 10px;
       }
       .panel-header h2 {
         margin: 0;
-        font-size: 1.3rem;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
       .meta {
         color: var(--muted);
-        font-size: 0.95rem;
+        font-size: 0.82rem;
       }
       #error-banner {
         display: none;
-        margin-bottom: 16px;
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: rgba(176, 68, 47, 0.08);
-        border: 1px solid rgba(176, 68, 47, 0.25);
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: rgba(255, 123, 114, 0.08);
+        border: 1px solid rgba(255, 123, 114, 0.25);
         color: var(--bad);
       }
       #lines {
         display: grid;
-        gap: 12px;
+        gap: 8px;
       }
       .line {
-        padding: 14px 16px;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(215, 203, 184, 0.75);
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid #d7dee7;
       }
       .line.pending {
         border-style: dashed;
       }
       .line-meta {
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         color: var(--muted);
-        font-size: 0.86rem;
+        font-size: 0.76rem;
       }
       .line-text {
-        font-size: 1.08rem;
-        line-height: 1.45;
+        font-size: 1rem;
+        line-height: 1.4;
         white-space: pre-wrap;
       }
       .empty {
         color: var(--muted);
-        padding: 12px 0;
+        padding: 8px 0;
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>transcriptor</h1>
-      <p class="lead">Speak into your microphone. The server starts the transcription pipeline on launch and this page follows the live transcript stream.</p>
-
       <section class="statusbar">
         <div class="status-card">
           <span class="label">API</span>
-          <span id="api-status" class="value">Checking...</span>
+          <span id="api-status" class="value">Starting...</span>
         </div>
         <div class="status-card">
           <span class="label">Transcriber</span>
-          <span id="transcriber-status" class="value">Checking...</span>
+          <span id="transcriber-status" class="value">Starting...</span>
         </div>
         <div class="status-card">
-          <span class="label">Transcript Stream</span>
-          <span id="ws-status" class="value">Connecting...</span>
+          <span class="label">Stream</span>
+          <span id="ws-status" class="value">Starting...</span>
         </div>
         <div class="status-card">
           <span class="label">Language</span>
@@ -181,16 +152,12 @@ INDEX_HTML = """<!doctype html>
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Live Transcript</h2>
-          <div id="line-count" class="meta">0 lines</div>
+          <h2>Transcript</h2>
+          <div id="line-count" class="meta">Last 10 lines</div>
         </div>
         <div id="error-banner"></div>
         <div id="lines">
           <div class="empty">Waiting for transcript events...</div>
-        </div>
-        <div class="diagnostics">
-          <div class="meta">Current status payload</div>
-          <code id="status-json">{}</code>
         </div>
       </section>
     </main>
@@ -204,8 +171,8 @@ INDEX_HTML = """<!doctype html>
       const wsStatusEl = document.getElementById("ws-status");
       const languageStatusEl = document.getElementById("language-status");
       const inputLevelStatusEl = document.getElementById("input-level-status");
-      const statusJsonEl = document.getElementById("status-json");
       const lines = new Map();
+      let streamConnected = false;
 
       function setStatus(el, text, tone) {
         el.textContent = text;
@@ -223,9 +190,11 @@ INDEX_HTML = """<!doctype html>
       }
 
       function renderLines() {
-        const ordered = Array.from(lines.values()).sort((a, b) => a.line_id - b.line_id);
-        lineCountEl.textContent = `${ordered.length} line${ordered.length === 1 ? "" : "s"}`;
-        if (!ordered.length) {
+        const ordered = Array.from(lines.values())
+          .sort((a, b) => a.line_id - b.line_id)
+          .slice(-10);
+        lineCountEl.textContent = `${ordered.length} of ${lines.size} line${lines.size === 1 ? "" : "s"}`;
+        if (!lines.size) {
           linesEl.innerHTML = '<div class="empty">Waiting for transcript events...</div>';
           return;
         }
@@ -253,11 +222,10 @@ INDEX_HTML = """<!doctype html>
         try {
           const response = await fetch("/api/status");
           const status = await response.json();
-          statusJsonEl.textContent = JSON.stringify(status, null, 2);
           setStatus(apiStatusEl, "Ready", "ok");
           setStatus(
             transcriberStatusEl,
-            status.running ? "Listening" : (status.last_error ? "Error" : "Idle"),
+            status.running ? "Listening" : (status.last_error ? "Error" : "Starting"),
             status.running ? "ok" : (status.last_error ? "bad" : "warn"),
           );
           languageStatusEl.textContent = status.language || "-";
@@ -265,9 +233,11 @@ INDEX_HTML = """<!doctype html>
           inputLevelStatusEl.textContent = Number(status.input_level || 0).toFixed(4);
           inputLevelStatusEl.className = "value " + ((status.input_level || 0) > 0.005 ? "ok" : "warn");
           setError(status.last_error || "");
+          setStatus(wsStatusEl, streamConnected ? "Connected" : "Starting", streamConnected ? "ok" : "warn");
         } catch (error) {
           setStatus(apiStatusEl, "Unavailable", "bad");
           setStatus(transcriberStatusEl, "Unknown", "warn");
+          setStatus(wsStatusEl, streamConnected ? "Connected" : "Disconnected", streamConnected ? "ok" : "bad");
           setError(`Failed to load status: ${error}`);
         }
       }
@@ -285,10 +255,12 @@ INDEX_HTML = """<!doctype html>
         const socket = new WebSocket(`${protocol}://${window.location.host}/ws/transcript`);
 
         socket.addEventListener("open", () => {
+          streamConnected = true;
           setStatus(wsStatusEl, "Connected", "ok");
         });
 
         socket.addEventListener("close", () => {
+          streamConnected = false;
           setStatus(wsStatusEl, "Disconnected", "bad");
           window.setTimeout(connectTranscriptStream, 1000);
         });

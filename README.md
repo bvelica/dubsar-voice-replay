@@ -33,7 +33,7 @@ XDG_CACHE_HOME=$PWD/.cache uvicorn app.main:app --reload
 
 Open the app locally at `http://127.0.0.1:8000`.
 
-On startup, the server will attempt to start the Moonshine microphone transcriber automatically. The home page shows component status and live transcript updates.
+On startup, the server will attempt to start the Moonshine microphone transcriber automatically. The home page shows a status bar and the 10 most recent transcript lines.
 
 The current working path is:
 
