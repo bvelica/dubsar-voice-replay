@@ -100,3 +100,58 @@ This file records decisions that should persist across sessions.
 
 - Decision: Use Uvicorn with the `websockets-sansio` backend as the default local run configuration.
 - Reason: It avoids the legacy `websockets` handler deprecation warning while keeping the standard FastAPI/Uvicorn stack.
+
+### MCP Role Boundary
+
+- Decision: Keep the built-in voice-to-AI reply loop inside the FastAPI app and transcript/conversation services instead of routing that loop through MCP.
+- Reason: MCP is valuable here as the external integration surface for other agent clients, but the local reply loop should stay simple, direct, and in-process.
+
+### Spoken Command Routing Direction
+
+- Decision: Move toward a spoken command model where a freeform utterance is captured first and a later command phrase routes that pending utterance to a chosen agent.
+- Reason: This matches how users naturally speak, avoids forcing command syntax into the content utterance itself, and leaves room for later multi-agent delegation.
+
+### Multi-Agent Architecture Direction
+
+- Decision: Treat provider adapters as one layer and agent orchestration as a separate higher-level layer built on the shared transcript/event store.
+- Reason: Adding another model provider is not the same as adding another agent role; keeping orchestration separate will make delegation, routing, and parallel agent execution simpler later.
+
+### Utterance Lifecycle Model
+
+- Decision: Represent finalized user speech as explicit utterance state in the shared store with lifecycle statuses such as pending, routed, processing, completed, and failed.
+- Reason: Timeline events alone are too implicit for command routing, retry behavior, UI pipeline tracking, and restart-safe agent orchestration.
+
+### Initial Spoken Command Grammar
+
+- Decision: Support explicit spoken control phrases that act on the latest pending utterance, starting with forms such as "command send to <provider>" and "command execute <provider>".
+- Reason: A narrow, explicit grammar is easier to say, easier to parse reliably from voice input, and safer than trying to infer control intent from arbitrary speech.
+
+### MCP Utterance Exposure
+
+- Decision: Expose utterance lifecycle state and routing actions through MCP using the same internal conversation service used by the web UI.
+- Reason: External agents should observe and trigger the same lifecycle semantics as the local app instead of going through a separate MCP-only code path.
+
+### Provider And Target Registry
+
+- Decision: Centralize known agent/provider targets and spoken aliases in a small registry instead of hardcoding them independently across status, command parsing, and app setup.
+- Reason: This keeps names like `chatgpt`, `openai`, `claude`, and `gemini` consistent and makes adding new adapters mostly a registry plus provider-wiring change.
+
+### Draft Thought Grouping
+
+- Decision: Group multiple finalized message utterances into a shared draft/thought until the user closes that draft by pressing send or speaking a routing command.
+- Reason: Moonshine may split one spoken thought across multiple finalized transcript lines; the app should keep per-utterance identity internally while routing and displaying a more natural user-intent unit.
+
+### Auto-Submit Removal
+
+- Decision: Remove the old transcript auto-submit mode instead of carrying it forward into the draft-based flow.
+- Reason: Auto-submitting finalized chunks conflicts with the new draft/thought model and would prematurely send partial speech before the user closes the draft intentionally.
+
+### Draft Submission Semantics
+
+- Decision: Treat drafts as the user-facing submission unit, keep command utterances separate from draft content, and allow failed drafts to be retried explicitly with `Send`.
+- Reason: Moonshine chunks are too low-level to be the stable unit of user intent. Commands should operate on drafts rather than becoming part of prompt text, and failed drafts should remain visible and retryable without absorbing unrelated later speech.
+
+### Frontend Asset Split
+
+- Decision: Move the web UI out of the giant inline HTML string in `app/ui.py` into static assets under `app/static/`, while keeping `app/ui.py` as a thin entrypoint.
+- Reason: The UI now has enough behavior and structure that inline HTML/CSS/JS is harder to maintain than a small static asset layout. Static files make the frontend easier to inspect, edit, and split further later without changing the host runtime model.

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>transcriptor</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <section class="statusbar">
+        <div class="status-card">
+          <span class="label">App</span>
+          <span id="app-status" class="value">Starting...</span>
+          <div id="app-detail" class="detail">-</div>
+        </div>
+        <div class="status-card">
+          <span class="label">MCP</span>
+          <span id="mcp-status" class="value">Starting...</span>
+          <div id="mcp-detail" class="detail">-</div>
+        </div>
+        <div class="status-card">
+          <span class="label">Transcriber</span>
+          <span id="transcriber-status" class="value">Starting...</span>
+          <div id="transcriber-detail" class="detail">-</div>
+        </div>
+        <div class="status-card">
+          <span class="label">Stream</span>
+          <span id="ws-status" class="value">Starting...</span>
+          <div id="ws-detail" class="detail">/ws/transcript</div>
+        </div>
+        <div class="status-card">
+          <span class="label">Mic Input Level</span>
+          <span id="input-level-status" class="value">0.0000</span>
+          <div id="input-level-detail" class="detail">RMS microphone level</div>
+        </div>
+        <div class="status-card">
+          <span class="label">Assistant</span>
+          <span id="assistant-status" class="value"><span class="spinner"></span><span class="status-text">Starting...</span></span>
+          <div id="assistant-detail" class="detail">-</div>
+        </div>
+        <div class="status-card">
+          <span class="label">Pipeline</span>
+          <span id="pipeline-status" class="value">Starting...</span>
+          <div id="pipeline-detail" class="detail">-</div>
+        </div>
+      </section>
+      <div class="timeline-header">
+        <button id="send-button" class="button" type="button">Send Latest</button>
+        <button id="clear-button" class="button" type="button">Clear</button>
+      </div>
+      <section id="lines"></section>
+    </main>
+  </body>
+</html>

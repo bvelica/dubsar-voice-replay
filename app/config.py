@@ -16,7 +16,6 @@ class Settings:
     transcript_history_limit: int
     default_provider: str
     assistant_history_events: int
-    assistant_auto_submit: bool
     openai_api_key: str | None
     openai_model: str
     openai_system_prompt: str
@@ -34,7 +33,6 @@ def load_settings() -> Settings:
         transcript_history_limit=10,
         default_provider=os.getenv("TRANSCRIPTOR_DEFAULT_PROVIDER", "openai"),
         assistant_history_events=int(os.getenv("TRANSCRIPTOR_ASSISTANT_HISTORY_EVENTS", "8")),
-        assistant_auto_submit=os.getenv("TRANSCRIPTOR_AUTO_SUBMIT_TRANSCRIPTS", "false").lower() in {"1", "true", "yes", "on"},
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
         openai_system_prompt=os.getenv(

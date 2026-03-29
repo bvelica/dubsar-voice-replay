@@ -60,6 +60,34 @@ class ConversationEvent:
         }
 
 
+@dataclass
+class UtteranceState:
+    source_line_id: int
+    text: str
+    status: str
+    kind: str
+    draft_id: int | None
+    created_seq: int
+    updated_seq: int
+    provider: str | None = None
+    provider_label: str | None = None
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_line_id": self.source_line_id,
+            "text": self.text,
+            "status": self.status,
+            "kind": self.kind,
+            "draft_id": self.draft_id,
+            "created_seq": self.created_seq,
+            "updated_seq": self.updated_seq,
+            "provider": self.provider,
+            "provider_label": self.provider_label,
+            "error": self.error,
+        }
+
+
 class TranscriptStore:
     def __init__(self, persistence_path: Path, history_limit: int) -> None:
         self._persistence_path = persistence_path
@@ -70,6 +98,8 @@ class TranscriptStore:
         self._events: dict[int, ConversationEvent] = {}
         self._ordered_event_ids: list[int] = []
         self._line_event_ids: dict[int, int] = {}
+        self._utterances: dict[int, UtteranceState] = {}
+        self._ordered_utterance_ids: list[int] = []
         self._running = False
         self._input_level = 0.0
         self._last_event: dict[str, Any] | None = None
@@ -77,6 +107,7 @@ class TranscriptStore:
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._seq = 0
         self._next_event_id = 0
+        self._next_draft_id = 0
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -113,6 +144,9 @@ class TranscriptStore:
                 "running": self._running,
             }
             payloads = [payload, self._upsert_conversation_event_locked(line_id=line_id, text=text, is_complete=is_complete)]
+            utterance_payload = self._sync_utterance_locked(line_id=line_id, text=text, is_complete=is_complete)
+            if utterance_payload is not None:
+                payloads.append(utterance_payload)
             self._last_event = payloads[-1]
             self._persist_locked()
         for item in payloads:
@@ -133,13 +167,7 @@ class TranscriptStore:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return {
-                "running": self._running,
-                "input_level": self._input_level,
-                "lines": [self._lines[line_id].to_dict() for line_id in self._ordered_ids],
-                "events": [self._events[event_id].to_dict() for event_id in self._ordered_event_ids],
-                "last_event": self._last_event,
-            }
+            return self._snapshot_locked()
 
     def clear(self) -> dict[str, Any]:
         with self._lock:
@@ -148,15 +176,12 @@ class TranscriptStore:
             self._events.clear()
             self._ordered_event_ids.clear()
             self._line_event_ids.clear()
+            self._utterances.clear()
+            self._ordered_utterance_ids.clear()
+            self._next_draft_id = 0
             self._last_event = {"type": "cleared", "running": self._running}
             self._persist_locked()
-            snapshot = {
-                "running": self._running,
-                "input_level": self._input_level,
-                "lines": [],
-                "events": [],
-                "last_event": self._last_event,
-            }
+            snapshot = self._snapshot_locked()
         self._broadcast({"type": "snapshot", "state": snapshot})
         return snapshot
 
@@ -184,18 +209,72 @@ class TranscriptStore:
         self._broadcast(payload)
         return event.to_dict()
 
+    def update_utterance(
+        self,
+        *,
+        source_line_id: int,
+        status: str,
+        text: str | None = None,
+        provider: str | None = None,
+        provider_label: str | None = None,
+        error: str | None = None,
+        kind: str | None = None,
+        draft_id: int | None = None,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            utterance = self._utterances.get(source_line_id)
+            if utterance is None:
+                line = self._lines.get(source_line_id)
+                if line is None or not line.is_complete:
+                    return None
+                self._seq += 1
+                utterance = UtteranceState(
+                    source_line_id=source_line_id,
+                    text=line.text,
+                    status="pending",
+                    kind="message",
+                    draft_id=self._next_open_draft_id_locked(),
+                    created_seq=self._seq,
+                    updated_seq=self._seq,
+                )
+                self._utterances[source_line_id] = utterance
+                self._ordered_utterance_ids.append(source_line_id)
+
+            self._seq += 1
+            updated = UtteranceState(
+                source_line_id=utterance.source_line_id,
+                text=text if text is not None else utterance.text,
+                status=status,
+                kind=kind if kind is not None else utterance.kind,
+                draft_id=draft_id if kind == "command" else (draft_id if draft_id is not None else utterance.draft_id),
+                created_seq=utterance.created_seq,
+                updated_seq=self._seq,
+                provider=provider if provider is not None else utterance.provider,
+                provider_label=provider_label if provider_label is not None else utterance.provider_label,
+                error=error,
+            )
+            self._utterances[source_line_id] = updated
+            payload = {"type": "utterance_updated", "utterance": updated.to_dict(), "running": self._running}
+            self._last_event = payload
+            self._persist_locked()
+        self._broadcast(payload)
+        return updated.to_dict()
+
     def load(self) -> None:
         if not self._persistence_path.exists():
             return
         payload = json.loads(self._persistence_path.read_text(encoding="utf-8"))
         events = payload.get("events", [])
         lines = payload.get("lines", [])
+        utterances = payload.get("utterances", [])
         with self._lock:
             self._lines.clear()
             self._ordered_ids.clear()
             self._events.clear()
             self._ordered_event_ids.clear()
             self._line_event_ids.clear()
+            self._utterances.clear()
+            self._ordered_utterance_ids.clear()
             for item in lines:
                 line = TranscriptLineState(
                     line_id=int(item["line_id"]),
@@ -231,6 +310,26 @@ class TranscriptStore:
                 self._seq = max(self._seq, event.updated_seq, event.created_seq)
                 if event.source_line_id is not None and event.role == "user":
                     self._line_event_ids[event.source_line_id] = event.event_id
+            for item in utterances:
+                utterance = UtteranceState(
+                    source_line_id=int(item["source_line_id"]),
+                    text=str(item["text"]),
+                    status=str(item["status"]),
+                    kind=str(item.get("kind", "message")),
+                    draft_id=item.get("draft_id"),
+                    created_seq=int(item["created_seq"]),
+                    updated_seq=int(item["updated_seq"]),
+                    provider=item.get("provider"),
+                    provider_label=item.get("provider_label"),
+                    error=item.get("error"),
+                )
+                self._utterances[utterance.source_line_id] = utterance
+                self._ordered_utterance_ids.append(utterance.source_line_id)
+                if isinstance(utterance.draft_id, int):
+                    self._next_draft_id = max(self._next_draft_id, utterance.draft_id)
+                self._seq = max(self._seq, utterance.updated_seq, utterance.created_seq)
+            if not utterances:
+                self._rebuild_utterances_locked()
             self._trim_locked()
 
     def _persist_locked(self) -> None:
@@ -238,6 +337,7 @@ class TranscriptStore:
         payload = {
             "lines": [self._lines[line_id].to_dict() for line_id in self._ordered_ids],
             "events": [self._events[event_id].to_dict() for event_id in self._ordered_event_ids],
+            "utterances": [self._utterances[source_line_id].to_dict() for source_line_id in self._ordered_utterance_ids],
         }
         self._persistence_path.write_text(
             json.dumps(payload, indent=2),
@@ -259,6 +359,10 @@ class TranscriptStore:
                 continue
             if self._line_event_ids.get(removed_event.source_line_id) == removed_id:
                 self._line_event_ids.pop(removed_event.source_line_id, None)
+        self._ordered_utterance_ids.sort(key=lambda line_id: self._utterances[line_id].created_seq)
+        while len(self._ordered_utterance_ids) > self._history_limit:
+            removed_id = self._ordered_utterance_ids.pop(0)
+            self._utterances.pop(removed_id, None)
 
     async def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -299,6 +403,97 @@ class TranscriptStore:
             self._ordered_event_ids.append(event_id)
         self._trim_locked()
         return {"type": "conversation_event", "event": event.to_dict(), "running": self._running}
+
+    def _sync_utterance_locked(self, *, line_id: int, text: str, is_complete: bool) -> dict[str, Any] | None:
+        utterance = self._utterances.get(line_id)
+        if not is_complete and utterance is None:
+            return None
+        if utterance is None:
+            utterance = UtteranceState(
+                source_line_id=line_id,
+                text=text,
+                status="pending",
+                kind="message",
+                draft_id=self._next_open_draft_id_locked(),
+                created_seq=self._seq,
+                updated_seq=self._seq,
+            )
+            self._utterances[line_id] = utterance
+            self._ordered_utterance_ids.append(line_id)
+        else:
+            utterance = UtteranceState(
+                source_line_id=utterance.source_line_id,
+                text=text,
+                status=utterance.status if utterance.status != "failed" else "pending",
+                kind=utterance.kind,
+                draft_id=utterance.draft_id,
+                created_seq=utterance.created_seq,
+                updated_seq=self._seq,
+                provider=utterance.provider,
+                provider_label=utterance.provider_label,
+                error=None if utterance.status == "failed" else utterance.error,
+            )
+            self._utterances[line_id] = utterance
+        self._trim_locked()
+        return {"type": "utterance_updated", "utterance": utterance.to_dict(), "running": self._running}
+
+    def _snapshot_locked(self) -> dict[str, Any]:
+        return {
+            "running": self._running,
+            "input_level": self._input_level,
+            "lines": [self._lines[line_id].to_dict() for line_id in self._ordered_ids],
+            "events": [self._events[event_id].to_dict() for event_id in self._ordered_event_ids],
+            "utterances": [self._utterances[source_line_id].to_dict() for source_line_id in self._ordered_utterance_ids],
+            "last_event": self._last_event,
+        }
+
+    def _rebuild_utterances_locked(self) -> None:
+        self._utterances.clear()
+        self._ordered_utterance_ids.clear()
+        self._next_draft_id = 0
+        for event_id in self._ordered_event_ids:
+            event = self._events[event_id]
+            if event.role == "user" and event.is_final and isinstance(event.source_line_id, int):
+                self._utterances[event.source_line_id] = UtteranceState(
+                    source_line_id=event.source_line_id,
+                    text=event.text,
+                    status="pending",
+                    kind="message",
+                    draft_id=self._next_open_draft_id_locked(),
+                    created_seq=event.created_seq,
+                    updated_seq=event.updated_seq,
+                )
+                if event.source_line_id not in self._ordered_utterance_ids:
+                    self._ordered_utterance_ids.append(event.source_line_id)
+                continue
+            if event.role != "assistant" or not isinstance(event.source_line_id, int):
+                continue
+            utterance = self._utterances.get(event.source_line_id)
+            if utterance is None:
+                continue
+            status = "failed" if event.kind == "system_notice" else "completed"
+            self._utterances[event.source_line_id] = UtteranceState(
+                source_line_id=utterance.source_line_id,
+                text=utterance.text,
+                status=status,
+                kind=utterance.kind,
+                draft_id=utterance.draft_id,
+                created_seq=utterance.created_seq,
+                updated_seq=max(utterance.updated_seq, event.updated_seq),
+                provider=utterance.provider,
+                provider_label=event.agent_name or utterance.provider_label,
+                error=event.text if status == "failed" else None,
+            )
+
+    def _next_open_draft_id_locked(self) -> int:
+        for source_line_id in reversed(self._ordered_utterance_ids):
+            utterance = self._utterances[source_line_id]
+            if utterance.kind != "message":
+                continue
+            if utterance.status == "pending" and isinstance(utterance.draft_id, int):
+                return utterance.draft_id
+        self._next_draft_id += 1
+        return self._next_draft_id
 
     def _restore_line_as_event_locked(self, line: TranscriptLineState) -> None:
         self._next_event_id += 1
