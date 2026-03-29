@@ -155,3 +155,8 @@ This file records decisions that should persist across sessions.
 
 - Decision: Move the web UI out of the giant inline HTML string in `app/ui.py` into static assets under `app/static/`, while keeping `app/ui.py` as a thin entrypoint.
 - Reason: The UI now has enough behavior and structure that inline HTML/CSS/JS is harder to maintain than a small static asset layout. Static files make the frontend easier to inspect, edit, and split further later without changing the host runtime model.
+
+### Product Rename
+
+- Decision: Rename the public-facing app identity from `transcriptor` to `dubsar`, while temporarily keeping legacy `TRANSCRIPTOR_*` env vars as fallback inputs.
+- Reason: `transcriptor` described the function but was too generic. `dubsar` is more distinctive, and keeping legacy env fallback avoids breaking local setups during the rename.

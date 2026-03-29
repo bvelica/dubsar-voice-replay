@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-`transcriptor` is a local-first voice-to-action server.
+`dubsar` is a local-first voice-to-action server.
 
 The intended flow is:
 

@@ -1,1 +1,1 @@
-"""Application package for transcriptor."""
+"""Application package for dubsar."""

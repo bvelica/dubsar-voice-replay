@@ -100,7 +100,7 @@ def mcp_status() -> dict[str, object]:
 
 def app_status() -> dict[str, object]:
     return {
-        "name": "transcriptor",
+        "name": "dubsar",
         "version": app_version,
         "fastapi_version": safe_package_version("fastapi"),
         "openai_sdk_version": safe_package_version("openai"),
@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="transcriptor",
+    title="dubsar",
     version=app_version,
     lifespan=lifespan,
 )

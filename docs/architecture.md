@@ -29,6 +29,14 @@ Core areas:
 - `ws/transcript` streams transcript updates from the shared store.
 - `app/ui.py` serves the UI entrypoint, while `app/static/` contains the host-native frontend assets for the status bar and recent conversation timeline.
 
+Current protocol and product identity:
+
+- FastAPI app title: `dubsar`
+- MCP server name: `dubsar`
+- MCP resource URI prefix: `dubsar://`
+- Preferred config env prefix: `DUBSAR_`
+- Legacy config env prefix still accepted temporarily: `TRANSCRIPTOR_`
+
 ## Current Interaction Model
 
 1. The microphone feeds Moonshine through `app/moonshine_service.py`.

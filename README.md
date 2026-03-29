@@ -1,3 +1,7 @@
+# Dubsar
+
+Dubsar is a local-first voice-to-agent relay that turns live speech into draftable prompts, routes them to AI providers on explicit command, and exposes the same live state through MCP.
+
 ## Description
 
 A small local-first voice-to-action server that uses Moonshine AI for live English speech-to-text, streams transcripts to a web UI, and exposes them through MCP so AI agents can read voice commands and trigger actions.
@@ -41,7 +45,7 @@ XDG_CACHE_HOME=$PWD/.cache uvicorn app.main:app --reload --ws websockets-sansio
 
 Open the app locally at `http://127.0.0.1:8000`.
 
-On startup, the server will attempt to start the Moonshine microphone transcriber automatically. The home page shows a status bar and a scrollable conversation timeline with recent user transcript events and assistant replies. If `OPENAI_API_KEY` is set, finalized user transcript lines are routed to the OpenAI provider by default and the response is appended back into the shared timeline.
+On startup, the server will attempt to start the Moonshine microphone transcriber automatically. The home page shows a status bar and a scrollable conversation timeline with recent user transcript events and assistant replies. If `OPENAI_API_KEY` is set, the OpenAI provider becomes the default configured reply target, but drafts are still sent only when the user explicitly closes them with `Send` or a recognized spoken routing command.
 
 Finalized transcript chunks are grouped into one open draft/thought until you close that draft. Use the `Send Latest` button in the UI or speak a routing command such as `command send to chatgpt` to close and send the current draft.
 
@@ -135,7 +139,7 @@ Optional provider configuration:
 ```bash
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-5-mini
-TRANSCRIPTOR_DEFAULT_PROVIDER=openai
+DUBSAR_DEFAULT_PROVIDER=openai
 ```
 
 Example `.env`:
@@ -143,7 +147,7 @@ Example `.env`:
 ```env
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5-mini
-TRANSCRIPTOR_DEFAULT_PROVIDER=openai
+DUBSAR_DEFAULT_PROVIDER=openai
 ```
 
 Restart the app after changing `.env`.

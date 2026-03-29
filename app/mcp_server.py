@@ -9,13 +9,13 @@ from app.conversation_service import ConversationService
 from app.moonshine_service import MoonshineService
 from app.transcript_store import TranscriptStore
 
-MCP_SERVER_NAME = "transcriptor"
+MCP_SERVER_NAME = "dubsar"
 MCP_RESOURCES = [
-    "transcriptor://status",
-    "transcriptor://snapshot",
-    "transcriptor://latest-user-message",
-    "transcriptor://utterances",
-    "transcriptor://latest-pending-draft",
+    "dubsar://status",
+    "dubsar://snapshot",
+    "dubsar://latest-user-message",
+    "dubsar://utterances",
+    "dubsar://latest-pending-draft",
 ]
 MCP_TOOLS = [
     "start_transcriber",
@@ -32,17 +32,17 @@ MCP_TOOLS = [
 def create_mcp_server(*, store: TranscriptStore, moonshine: MoonshineService, conversation_service: ConversationService) -> FastMCP:
     mcp = FastMCP(MCP_SERVER_NAME)
 
-    @mcp.resource("transcriptor://status")
+    @mcp.resource("dubsar://status")
     def get_status() -> str:
         """Return the current microphone and transcriber status."""
         return _to_json(moonshine.status())
 
-    @mcp.resource("transcriptor://snapshot")
+    @mcp.resource("dubsar://snapshot")
     def get_snapshot() -> str:
         """Return the current transcript and conversation snapshot."""
         return _to_json(store.snapshot())
 
-    @mcp.resource("transcriptor://latest-user-message")
+    @mcp.resource("dubsar://latest-user-message")
     def get_latest_user_message() -> str:
         """Return the latest finalized user transcript line."""
         snapshot = store.snapshot()
@@ -51,13 +51,13 @@ def create_mcp_server(*, store: TranscriptStore, moonshine: MoonshineService, co
                 return event["text"]
         return ""
 
-    @mcp.resource("transcriptor://utterances")
+    @mcp.resource("dubsar://utterances")
     def get_utterances() -> str:
         """Return the current utterance lifecycle snapshot."""
         snapshot = store.snapshot()
         return _to_json(snapshot["utterances"])
 
-    @mcp.resource("transcriptor://latest-pending-draft")
+    @mcp.resource("dubsar://latest-pending-draft")
     def get_latest_pending_draft() -> str:
         """Return the latest actionable draft as a list of utterance records."""
         snapshot = store.snapshot()

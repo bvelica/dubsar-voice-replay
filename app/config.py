@@ -22,6 +22,10 @@ class Settings:
     language: str = "en"
 
 
+def env_with_legacy(name: str, legacy_name: str, default: str | None = None) -> str | None:
+    return os.getenv(name, os.getenv(legacy_name, default))
+
+
 def load_settings() -> Settings:
     project_root = Path(__file__).resolve().parent.parent
     load_dotenv(project_root / ".env")
@@ -31,8 +35,10 @@ def load_settings() -> Settings:
         data_dir=project_root / "data",
         transcript_store_path=project_root / "data" / "transcript_history.json",
         transcript_history_limit=10,
-        default_provider=os.getenv("TRANSCRIPTOR_DEFAULT_PROVIDER", "openai"),
-        assistant_history_events=int(os.getenv("TRANSCRIPTOR_ASSISTANT_HISTORY_EVENTS", "8")),
+        default_provider=env_with_legacy("DUBSAR_DEFAULT_PROVIDER", "TRANSCRIPTOR_DEFAULT_PROVIDER", "openai") or "openai",
+        assistant_history_events=int(
+            env_with_legacy("DUBSAR_ASSISTANT_HISTORY_EVENTS", "TRANSCRIPTOR_ASSISTANT_HISTORY_EVENTS", "8") or "8"
+        ),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
         openai_system_prompt=os.getenv(

@@ -25,6 +25,7 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 - Updated the UI to render recent conversation events instead of only raw transcript lines
 - Replaced the temporary echo-reply path with provider-driven assistant responses
 - Switched the documented local Uvicorn run command to `--ws websockets-sansio`
+- Renamed the public app identity to `dubsar`, including the FastAPI title, MCP server identity, and preferred config env prefix
 
 ## [0.1.0] - 2026-03-28
 
