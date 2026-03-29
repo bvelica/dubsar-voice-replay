@@ -158,5 +158,10 @@ This file records decisions that should persist across sessions.
 
 ### Product Rename
 
-- Decision: Rename the public-facing app identity from `transcriptor` to `dubsar`, while temporarily keeping legacy `TRANSCRIPTOR_*` env vars as fallback inputs.
-- Reason: `transcriptor` described the function but was too generic. `dubsar` is more distinctive, and keeping legacy env fallback avoids breaking local setups during the rename.
+- Decision: Rename the public-facing app identity to `dubsar`, while temporarily keeping the previous env prefix as fallback inputs.
+- Reason: The previous name described the function but was too generic. `dubsar` is more distinctive, and keeping the old env fallback avoided breaking local setups during the rename.
+
+### Remove Legacy Rename Compatibility
+
+- Decision: Remove the temporary old environment-variable prefix fallback and keep only the `DUBSAR_*` config names.
+- Reason: The rename is complete, and keeping the old prefix around leaves stale product identity in the runtime and docs.

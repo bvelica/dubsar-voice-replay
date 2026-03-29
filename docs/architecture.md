@@ -35,7 +35,6 @@ Current protocol and product identity:
 - MCP server name: `dubsar`
 - MCP resource URI prefix: `dubsar://`
 - Preferred config env prefix: `DUBSAR_`
-- Legacy config env prefix still accepted temporarily: `TRANSCRIPTOR_`
 
 ## Current Interaction Model
 
