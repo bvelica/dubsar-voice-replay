@@ -25,6 +25,8 @@ Create a local environment file for provider credentials:
 cp .env.example .env
 ```
 
+Only put local secrets in `.env`. Do not commit `.env`, API keys, provider tokens, or exported credential files.
+
 Download the default English Moonshine model into a repo-local cache:
 
 ```bash
@@ -51,6 +53,28 @@ The current working path is:
 4. keep that state in memory and persist it locally
 5. stream conversation updates to the browser over WebSocket
 
+## Current Structure
+
+Key files and modules:
+
+- `app/main.py`: FastAPI entrypoint, lifecycle wiring, API routes, WebSocket route, MCP mount
+- `app/config.py`: settings and `.env` loading
+- `app/moonshine_service.py`: microphone capture and Moonshine streaming transcription
+- `app/transcript_store.py`: in-memory transcript and conversation timeline persistence
+- `app/conversation_service.py`: buffered user utterance submission and assistant reply orchestration
+- `app/agent_router.py`: provider selection for each finalized utterance
+- `app/commands.py`: command parsing for provider overrides such as `/openai`
+- `app/agents/base.py`: provider interface and reply model
+- `app/agents/openai_provider.py`: first provider implementation using the OpenAI Responses API
+- `app/response_writer.py`: appends assistant and system events back into the shared timeline
+- `app/mcp_server.py`: FastMCP resources and tools exposed from the live in-process app state
+- `app/ui.py`: single-page HTML UI for transcript, assistant replies, and status indicators
+- `docs/context.md`: current product scope and constraints
+- `docs/decisions.md`: persistent technical decisions
+- `docs/architecture.md`: current system shape and event flow
+- `.env.example`: safe template for local provider configuration
+- `data/transcript_history.json`: local persisted conversation history
+
 Useful endpoints:
 
 - `GET /health`
@@ -73,6 +97,17 @@ TRANSCRIPTOR_DEFAULT_PROVIDER=openai
 TRANSCRIPTOR_AUTO_SUBMIT_TRANSCRIPTS=false
 ```
 
+Example `.env`:
+
+```env
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5-mini
+TRANSCRIPTOR_DEFAULT_PROVIDER=openai
+TRANSCRIPTOR_AUTO_SUBMIT_TRANSCRIPTS=false
+```
+
+Restart the app after changing `.env`.
+
 ## Notes
 
 - This project is intended for English-only Moonshine usage.
@@ -83,3 +118,11 @@ TRANSCRIPTOR_AUTO_SUBMIT_TRANSCRIPTS=false
 - Microphone access is expected to work best in a normal host session, not in a restricted sandbox.
 - The current implementation is host-native and intentionally keeps the setup simple instead of using Docker.
 - Conversation history is persisted locally in `data/transcript_history.json` and currently keeps the latest 10 events.
+
+## Secret Handling
+
+- `.env` is for local development only and is git-ignored.
+- `data/transcript_history.json` is git-ignored because it contains local conversation data.
+- Keep real API keys only in environment variables, `.env`, or a proper secret manager.
+- Never hardcode provider credentials in Python, JavaScript, or docs.
+- Keep `.env.example` as placeholders only.
