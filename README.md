@@ -2,6 +2,12 @@
 
 Dubsar is a local-first voice-to-agent relay that turns live speech into draftable prompts, routes them to AI providers on explicit command, and exposes the same live state through MCP.
 
+## Local-Only
+
+Dubsar is intended to run on a trusted local machine or local network under the operator's control.
+
+Do not expose this app directly to the public internet. The HTTP API, WebSocket endpoint, and MCP surface are designed for local-first use, not for unauthenticated public hosting.
+
 ## Description
 
 A small local-first voice-to-action server that uses Moonshine AI for live English speech-to-text, streams transcripts to a web UI, and exposes them through MCP so AI agents can read voice commands and trigger actions.
@@ -44,6 +50,8 @@ XDG_CACHE_HOME=$PWD/.cache uvicorn app.main:app --reload --ws websockets-sansio
 ```
 
 Open the app locally at `http://127.0.0.1:8000`.
+
+Keep the server bound to a local interface unless you intentionally add your own network and access-control layer around it.
 
 On startup, the server will attempt to start the Moonshine microphone transcriber automatically. The home page shows a status bar and a scrollable conversation timeline with recent user transcript events and assistant replies. If `OPENAI_API_KEY` is set, the OpenAI provider becomes the default configured reply target, but drafts are still sent only when the user explicitly closes them with `Send` or a recognized spoken routing command.
 
