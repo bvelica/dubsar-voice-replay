@@ -91,6 +91,11 @@ This file records decisions that should persist across sessions.
 - Decision: Use the OpenAI Python SDK with the Responses API as the first real provider implementation.
 - Reason: It is a practical way to replace the temporary echo reply quickly while keeping the provider interface clean enough for additional backends.
 
+### Second Real Reply Provider
+
+- Decision: Add Claude through Anthropic's Messages API as the second real provider adapter.
+- Reason: The app is intended to route drafts across multiple named agents/providers, and Claude is a practical next backend to validate the provider abstraction and visible provider status flow.
+
 ### Local Provider Credential Loading
 
 - Decision: Load provider configuration from environment variables and a repo-local `.env` file during development.
@@ -125,6 +130,11 @@ This file records decisions that should persist across sessions.
 
 - Decision: Support explicit spoken control phrases that act on the latest pending utterance, starting with forms such as "command send to <provider>" and "command execute <provider>".
 - Reason: A narrow, explicit grammar is easier to say, easier to parse reliably from voice input, and safer than trying to infer control intent from arbitrary speech.
+
+### Short Agent Routing Commands
+
+- Decision: Support short routing utterances such as `agent claude` and `agent chatgpt` as explicit commands that act on the latest pending draft.
+- Reason: This keeps routing explicit and reliable in voice use without depending on prompt-text parsing after Moonshine chunking and draft grouping.
 
 ### MCP Utterance Exposure
 
@@ -163,5 +173,52 @@ This file records decisions that should persist across sessions.
 
 ### Remove Legacy Rename Compatibility
 
-- Decision: Remove the temporary old environment-variable prefix fallback and keep only the `DUBSAR_*` config names.
-- Reason: The rename is complete, and keeping the old prefix around leaves stale product identity in the runtime and docs.
+- Decision: Remove the temporary old environment-variable prefix fallback and keep the runtime config surface minimal.
+- Reason: The rename is complete, and keeping stale compatibility inputs around leaves outdated product identity in the runtime and docs.
+
+### Default Provider Env Name
+
+- Decision: Use `DEFAULT_AI` as the env var for the fallback reply provider instead of `DUBSAR_DEFAULT_PROVIDER`.
+- Reason: The app's voice routing model is centered on named AI agents, and `DEFAULT_AI` is shorter and clearer in local `.env` configuration.
+
+## 2026-04-03
+
+### Remove Voice Routing Commands
+
+- Decision: Remove spoken routing commands such as `agent claude` and `agent chatgpt` from the live speech path for now.
+- Reason: Moonshine chunking makes short command utterances too brittle in practice, and explicit draft submission through the UI or APIs is more predictable while the routing model is reconsidered.
+
+### Remove Implicit Latest-Draft Submission
+
+- Decision: Remove the implicit "send latest draft" actions from the web/API/MCP surface and keep submission draft-ID-based.
+- Reason: A back-to-basics interaction model is easier to reason about when every send action names the draft it is operating on and the app no longer tries to guess user intent from recency alone.
+
+### MCP-First Agent Direction
+
+- Decision: Move the product direction toward treating AI agents as external MCP clients rather than the long-term in-process reply mechanism.
+- Reason: This creates a cleaner separation of concerns. Dubsar can own voice capture, Moonshine transcription, shared state, persistence, and UI, while agent behavior becomes externally observable, replaceable, and easier to monitor through one standard protocol surface.
+
+### Built-In Providers As Transitional Path
+
+- Decision: Keep the current built-in OpenAI and Claude provider adapters temporarily as a transition path while the MCP-first model is being designed and implemented.
+- Reason: They keep the app usable for testing and comparison while the MCP-first external-agent workflow is still being introduced.
+
+### Remove Built-In Provider Loop
+
+- Decision: Remove the in-process provider-routing and reply-generation path from the live app and make draft queueing plus MCP agent lifecycle the only runtime path.
+- Reason: Keeping both architectures active at once kept the code and UI semantically muddy. The MCP-first direction is now explicit enough that the runtime should reflect it directly.
+
+### Request-Centric Visibility Model
+
+- Decision: Use `request_id` as the primary visible workflow identifier and keep `source_line_id` as the lower-level Moonshine chunk identifier underneath it.
+- Reason: One spoken thought can span multiple finalized Moonshine chunks. A request-level trace is easier to understand than exposing only low-level utterance/chunk IDs, while still preserving chunk lineage for debugging.
+
+### Explicit Request Event Log
+
+- Decision: Record explicit request lifecycle events such as creation, update, queue, claim, completion, and failure in the shared store and expose them to both the UI and MCP.
+- Reason: Current-state fields alone do not tell the story of what happened. A lightweight append-only request event log gives the app the observability needed to debug Moonshine chunking, MCP handoff, and external agent execution.
+
+### User-Triggered Delegation Via Child Requests
+
+- Decision: Model delegation as explicit user-triggered child requests instead of agent-initiated hidden delegation.
+- Reason: The user should stay in control of when another agent is pulled in. Child requests keep delegation visible, traceable, and compatible with the request-centric observability model.

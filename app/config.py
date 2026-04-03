@@ -14,11 +14,10 @@ class Settings:
     data_dir: Path
     transcript_store_path: Path
     transcript_history_limit: int
-    default_provider: str
-    assistant_history_events: int
     openai_api_key: str | None
-    openai_model: str
-    openai_system_prompt: str
+    anthropic_api_key: str | None
+    auto_start_openai_agent: bool
+    auto_start_anthropic_agent: bool
     language: str = "en"
 
 
@@ -31,13 +30,8 @@ def load_settings() -> Settings:
         data_dir=project_root / "data",
         transcript_store_path=project_root / "data" / "transcript_history.json",
         transcript_history_limit=10,
-        default_provider=os.getenv("DUBSAR_DEFAULT_PROVIDER", "openai") or "openai",
-        assistant_history_events=int(os.getenv("DUBSAR_ASSISTANT_HISTORY_EVENTS", "8") or "8"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
-        openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
-        openai_system_prompt=os.getenv(
-            "OPENAI_SYSTEM_PROMPT",
-            "You are a concise voice assistant inside a local-first transcript UI. "
-            "Reply clearly, directly, and briefly unless the user asks for more detail.",
-        ),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+        auto_start_openai_agent=(os.getenv("AUTO_START_OPENAI_AGENT", "1").strip().lower() not in {"0", "false", "no", "off"}),
+        auto_start_anthropic_agent=(os.getenv("AUTO_START_ANTHROPIC_AGENT", "1").strip().lower() not in {"0", "false", "no", "off"}),
     )

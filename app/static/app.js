@@ -1,5 +1,4 @@
 const linesEl = document.getElementById("lines");
-const sendButtonEl = document.getElementById("send-button");
 const clearButtonEl = document.getElementById("clear-button");
 const appStatusEl = document.getElementById("app-status");
 const appDetailEl = document.getElementById("app-detail");
@@ -15,11 +14,17 @@ const assistantStatusEl = document.getElementById("assistant-status");
 const assistantDetailEl = document.getElementById("assistant-detail");
 const pipelineStatusEl = document.getElementById("pipeline-status");
 const pipelineDetailEl = document.getElementById("pipeline-detail");
+const requestsEl = document.getElementById("requests");
 const events = new Map();
 const utterances = new Map();
+const requests = new Map();
+const requestEvents = new Map();
 let sendingDraftIds = new Set();
+let delegatingRequestIds = new Set();
 let streamConnected = false;
 let assistantProcessing = false;
+let currentAssistantProvider = "-";
+let currentActiveAgents = [];
 
 function setStatus(el, text, tone) {
   const textEl = el.querySelector(".status-text");
@@ -47,28 +52,60 @@ function setDetail(el, text) {
     .join("");
 }
 
+function setHtmlDetail(el, html) {
+  el.innerHTML = html || "";
+}
+
+function normalizeAgentStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "working") {
+    return { label: "working", tone: "warn" };
+  }
+  if (normalized === "ready") {
+    return { label: "ready", tone: "ok" };
+  }
+  if (normalized === "error") {
+    return { label: "error", tone: "bad" };
+  }
+  return { label: normalized || "unknown", tone: "warn" };
+}
+
 function renderTimeline() {
   const ordered = Array.from(events.values()).sort((a, b) => a.created_seq - b.created_seq);
-  const grouped = groupTimelineEvents(ordered);
+  const assistantRepliesBySourceLineId = buildAssistantRepliesBySourceLineId(ordered);
+  const requestEventsByRequestId = buildRequestEventsByRequestId();
+  const grouped = groupTimelineEvents(ordered).filter(shouldRenderTimelineEvent);
   if (!grouped.length) {
     linesEl.innerHTML = "";
     return;
   }
   if (assistantProcessing) {
+    const activeAgentName = currentAssistantProvider && currentAssistantProvider !== "-"
+      ? currentAssistantProvider
+      : "Agent";
     grouped.push({
       role: "assistant",
       is_final: false,
-      text: "Assistant is thinking...",
-      agent_name: "OpenAI",
+      text: "Agent is working...",
+      agent_name: activeAgentName,
     });
   }
   linesEl.innerHTML = grouped.map((event) => {
     const utterance = event.role === "user" && Number.isInteger(event.draft_source_line_id)
       ? utterances.get(event.draft_source_line_id)
       : null;
+    const relatedAssistant = event.role === "user" && Number.isInteger(event.draft_source_line_id)
+      ? assistantRepliesBySourceLineId.get(event.draft_source_line_id) || null
+      : null;
+    const relatedRequestEvents = event.role === "user" && Number.isInteger(event.request_id)
+      ? requestEventsByRequestId.get(event.request_id) || []
+      : [];
+    const assistantAgentClass = event.role === "assistant"
+      ? agentToneClass(event.agent_name)
+      : "";
     const label = event.role === "assistant"
       ? (event.agent_name ? `Assistant · ${escapeHtml(event.agent_name)}` : "Assistant")
-      : describeUserEventLabel(event, utterance);
+      : describeUserEventLabel(event, utterance, relatedAssistant);
     const canSend = Boolean(
       utterance &&
       utterance.kind === "message" &&
@@ -76,20 +113,162 @@ function renderTimeline() {
       Number.isInteger(event.draft_id)
     );
     const actionHtml = canSend
-      ? `<div class="line-actions"><button class="line-button" type="button" data-send-draft-id="${event.draft_id}" ${sendingDraftIds.has(event.draft_id) ? "disabled" : ""}>Send</button></div>`
+      ? `<div class="line-actions"><button class="line-button" type="button" data-send-draft-id="${event.draft_id}" ${sendingDraftIds.has(event.draft_id) ? "disabled" : ""}>Queue</button></div>`
+      : "";
+    const requestMetaHtml = event.role === "user" && Number.isInteger(event.request_id)
+      ? `<div class="line-submeta">Request ${event.request_id}${event.source_line_ids.length ? ` · lines ${event.source_line_ids.join(", ")}` : ""}</div>`
+      : "";
+    const traceHtml = event.role === "user" && relatedRequestEvents.length
+      ? `<div class="request-trace">${relatedRequestEvents.map((traceEvent) => {
+          const agent = traceEvent.agent_label || traceEvent.agent_name || "Dubsar";
+          return `<div class="request-trace-item"><span class="request-trace-kind">${escapeHtml(traceEvent.kind)}</span><span class="request-trace-detail">${escapeHtml(traceEvent.detail)}</span><span class="request-trace-agent">${escapeHtml(agent)}</span></div>`;
+        }).join("")}</div>`
       : "";
     return `
-      <article class="line ${event.role} ${event.is_final ? "complete" : "pending"}">
+      <article class="line ${event.role} ${event.is_final ? "complete" : "pending"} ${assistantAgentClass}">
         <div class="line-head">
           <div class="line-meta">${label}</div>
           ${actionHtml}
         </div>
+        ${requestMetaHtml}
         <div class="line-text">${escapeHtml(event.text || "")}</div>
+        ${traceHtml}
       </article>
     `;
   }).join("");
   bindLineActions();
   linesEl.scrollTop = linesEl.scrollHeight;
+}
+
+function renderRequests() {
+  const ordered = orderedRequestsForDisplay();
+  const requestEventsByRequestId = buildRequestEventsByRequestId();
+  if (!ordered.length) {
+    requestsEl.innerHTML = "";
+    return;
+  }
+  requestsEl.innerHTML = ordered.map((request) => {
+    const traceEvents = requestEventsByRequestId.get(request.request_id) || [];
+    const canQueue = ["pending", "failed"].includes(request.status || "");
+    const delegateButtons = currentActiveAgents
+      .filter((agent) => (agent.name || "").trim().toLowerCase() !== String(request.target_agent_name || "").trim().toLowerCase())
+      .map((agent) => `<button class="line-button secondary" type="button" data-delegate-request-id="${request.request_id}" data-agent-name="${escapeHtml(agent.name)}" ${delegatingRequestIds.has(request.request_id) ? "disabled" : ""}>Delegate to ${escapeHtml(agent.label || agent.name)}</button>`)
+      .join("");
+    const statusLabel = `${request.status || "pending"}${request.agent_label ? ` · ${escapeHtml(request.agent_label)}` : ""}${request.target_agent_label ? ` · target ${escapeHtml(request.target_agent_label)}` : ""}`;
+    const lineageLabel = [
+      request.origin || "speech",
+      Number.isInteger(request.parent_request_id) ? `child of ${request.parent_request_id}` : null,
+      Array.isArray(request.source_line_ids) && request.source_line_ids.length ? `lines ${request.source_line_ids.join(", ")}` : null,
+    ].filter(Boolean).join(" · ");
+    return `
+      <article class="request-card ${request.parent_request_id ? "child" : "root"}">
+        <div class="line-head">
+          <div class="line-meta">Request ${request.request_id}</div>
+          <div class="line-actions">
+            ${canQueue ? `<button class="line-button" type="button" data-send-draft-id="${request.request_id}" ${sendingDraftIds.has(request.request_id) ? "disabled" : ""}>Queue</button>` : ""}
+            ${delegateButtons}
+          </div>
+        </div>
+        <div class="line-submeta">${statusLabel}</div>
+        ${lineageLabel ? `<div class="line-submeta">${escapeHtml(lineageLabel)}</div>` : ""}
+        <div class="line-text">${escapeHtml(request.text || "")}</div>
+        ${traceEvents.length ? `<div class="request-trace">${traceEvents.map((traceEvent) => {
+          const agent = traceEvent.agent_label || traceEvent.agent_name || "Dubsar";
+          return `<div class="request-trace-item"><span class="request-trace-kind">${escapeHtml(traceEvent.kind)}</span><span class="request-trace-detail">${escapeHtml(traceEvent.detail)}</span><span class="request-trace-agent">${escapeHtml(agent)}</span></div>`;
+        }).join("")}</div>` : ""}
+      </article>
+    `;
+  }).join("");
+  bindLineActions();
+}
+
+function orderedRequestsForDisplay() {
+  const items = Array.from(requests.values());
+  const byParentId = new Map();
+  for (const request of items) {
+    const parentId = Number.isInteger(request.parent_request_id) ? request.parent_request_id : null;
+    if (!byParentId.has(parentId)) {
+      byParentId.set(parentId, []);
+    }
+    byParentId.get(parentId).push(request);
+  }
+  const sortByCreated = (a, b) => {
+    const seqDelta = Number(a.created_seq || 0) - Number(b.created_seq || 0);
+    if (seqDelta !== 0) {
+      return seqDelta;
+    }
+    return Number(a.request_id || 0) - Number(b.request_id || 0);
+  };
+  for (const group of byParentId.values()) {
+    group.sort(sortByCreated);
+  }
+  const ordered = [];
+  const visit = (parentId) => {
+    for (const request of byParentId.get(parentId) || []) {
+      ordered.push(request);
+      visit(request.request_id);
+    }
+  };
+  visit(null);
+  return ordered;
+}
+
+function buildRequestEventsByRequestId() {
+  const grouped = new Map();
+  const ordered = Array.from(requestEvents.values()).sort((a, b) => a.created_seq - b.created_seq);
+  for (const event of ordered) {
+    if (!Number.isInteger(event.request_id)) {
+      continue;
+    }
+    if (!grouped.has(event.request_id)) {
+      grouped.set(event.request_id, []);
+    }
+    grouped.get(event.request_id).push(event);
+  }
+  return grouped;
+}
+
+function shouldRenderTimelineEvent(event) {
+  if (event.role !== "user") {
+    return true;
+  }
+  if (!event.is_final) {
+    return true;
+  }
+  return !Number.isInteger(event.request_id);
+}
+
+function buildAssistantRepliesBySourceLineId(ordered) {
+  const replies = new Map();
+  for (const event of ordered) {
+    if (event.role !== "assistant" || !event.is_final || !Number.isInteger(event.source_line_id)) {
+      continue;
+    }
+    if (event.kind !== "assistant_reply") {
+      continue;
+    }
+    replies.set(event.source_line_id, {
+      agent_name: event.agent_name || null,
+    });
+  }
+  return replies;
+}
+
+function agentToneClass(agentName) {
+  const normalized = String(agentName || "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.includes("claude")) {
+    return "agent-claude";
+  }
+  if (normalized.includes("openai") || normalized.includes("chatgpt")) {
+    return "agent-chatgpt";
+  }
+  if (normalized.includes("gemini")) {
+    return "agent-gemini";
+  }
+  return "agent-other";
 }
 
 function groupTimelineEvents(ordered) {
@@ -119,6 +298,7 @@ function groupTimelineEvents(ordered) {
     grouped.push({
       ...event,
       draft_id: utterance ? utterance.draft_id : null,
+      request_id: utterance ? (utterance.request_id ?? utterance.draft_id) : null,
       draft_source_line_id: Number.isInteger(event.source_line_id) ? event.source_line_id : null,
       source_line_ids: Number.isInteger(event.source_line_id) ? [event.source_line_id] : [],
     });
@@ -126,33 +306,33 @@ function groupTimelineEvents(ordered) {
   return grouped;
 }
 
-function describeUserEventLabel(event, utterance) {
+function describeUserEventLabel(event, utterance, relatedAssistant) {
   if (!event.is_final) {
     return "You · live";
   }
   if (!utterance) {
     return "You";
   }
-  if (utterance.kind === "command") {
-    if (utterance.status === "failed") {
-      return "You · command failed";
-    }
-    return `You · command${utterance.provider_label ? ` · ${escapeHtml(utterance.provider_label)}` : ""}`;
-  }
   const status = utterance.status || "pending";
   if (status === "processing") {
-    return `You · processing${utterance.provider_label ? ` · ${escapeHtml(utterance.provider_label)}` : ""}`;
+    return `You · processing · Request ${utterance.request_id ?? utterance.draft_id}${utterance.agent_label ? ` · ${escapeHtml(utterance.agent_label)}` : ""}`;
+  }
+  if (status === "completed" && relatedAssistant?.agent_name) {
+    return `You · completed · Request ${utterance.request_id ?? utterance.draft_id} · ${escapeHtml(relatedAssistant.agent_name)}`;
   }
   if (status === "completed") {
-    return `You · sent${utterance.provider_label ? ` · ${escapeHtml(utterance.provider_label)}` : ""}`;
+    return `You · completed · Request ${utterance.request_id ?? utterance.draft_id}${utterance.agent_label ? ` · ${escapeHtml(utterance.agent_label)}` : ""}`;
   }
   if (status === "failed") {
-    return `You · failed${utterance.provider_label ? ` · ${escapeHtml(utterance.provider_label)}` : ""}`;
+    return `You · failed · Request ${utterance.request_id ?? utterance.draft_id}${utterance.agent_label ? ` · ${escapeHtml(utterance.agent_label)}` : ""}`;
   }
-  if (status === "routed") {
-    return `You · routed${utterance.provider_label ? ` · ${escapeHtml(utterance.provider_label)}` : ""}`;
+  if (status === "claimed") {
+    return `You · claimed · Request ${utterance.request_id ?? utterance.draft_id}${utterance.agent_label ? ` · ${escapeHtml(utterance.agent_label)}` : ""}`;
   }
-  return "You · pending";
+  if (status === "queued") {
+    return `You · queued · Request ${utterance.request_id ?? utterance.draft_id}`;
+  }
+  return `You · request ${utterance.request_id ?? utterance.draft_id}`;
 }
 
 function escapeHtml(value) {
@@ -171,6 +351,23 @@ function bindLineActions() {
       }
     });
   }
+  for (const button of requestsEl.querySelectorAll("[data-send-draft-id]")) {
+    button.addEventListener("click", () => {
+      const draftId = Number(button.dataset.sendDraftId);
+      if (Number.isInteger(draftId)) {
+        sendDraft(draftId);
+      }
+    });
+  }
+  for (const button of requestsEl.querySelectorAll("[data-delegate-request-id]")) {
+    button.addEventListener("click", () => {
+      const requestId = Number(button.dataset.delegateRequestId);
+      const agentName = String(button.dataset.agentName || "").trim();
+      if (Number.isInteger(requestId) && agentName) {
+        delegateRequest(requestId, agentName);
+      }
+    });
+  }
 }
 
 async function refreshStatus() {
@@ -179,14 +376,16 @@ async function refreshStatus() {
     const status = await response.json();
     const app = status.app || {};
     const mcp = status.mcp || {};
-    const assistant = status.assistant || {};
+    const agents = status.agents || {};
+    const activeAgents = Array.isArray(agents.active_agents) ? agents.active_agents : [];
+    currentActiveAgents = activeAgents;
     setStatus(appStatusEl, `${app.name || "app"} ${app.version || ""}`.trim(), "ok");
     setDetail(
       appDetailEl,
       [
         `FastAPI ${app.fastapi_version || "-"}`,
         `Moonshine ${app.moonshine_version || "-"}`,
-        `OpenAI SDK ${app.openai_sdk_version || "-"}`,
+        `HTTPX ${app.httpx_version || "-"}`,
       ],
     );
     setStatus(
@@ -222,45 +421,46 @@ async function refreshStatus() {
       inputLevelDetailEl,
       (status.input_level || 0) > 0 ? "Microphone signal detected" : "No microphone signal yet",
     );
-    assistantProcessing = Boolean(assistant.processing);
+    assistantProcessing = Boolean(agents.processing);
+    currentAssistantProvider = agents.current_agent_label || agents.current_agent_name || "-";
     const assistantLabel = assistantProcessing
-      ? `Processing · ${assistant.default_provider || "-"}`
-      : assistant.ready
-        ? `Ready · ${assistant.default_provider || "-"} · manual`
-        : `${assistant.default_provider || "assistant"} · ${assistant.error || "Not configured"}`;
+      ? `Working · ${currentAssistantProvider || "-"}`
+      : agents.ready
+        ? `${Number(agents.agent_count || activeAgents.length)} connected`
+        : "No agents connected";
     setStatus(
       assistantStatusEl,
       assistantLabel,
-      assistantProcessing ? "warn" : (assistant.ready ? "ok" : "bad"),
+      assistantProcessing ? "warn" : (agents.ready ? "ok" : "bad"),
     );
     setSpinner(assistantStatusEl, assistantProcessing);
-    setDetail(
+    setHtmlDetail(
       assistantDetailEl,
-      [
-        `Known: ${(assistant.known_providers || []).join(", ") || "none"}`,
-        `Configured: ${(assistant.configured_providers || []).join(", ") || "none"}`,
-        `Pending drafts: ${assistant.pending_count || 0}`,
-        assistant.error ? `Issue: ${assistant.error}` : "Reply path available",
-      ],
+      activeAgents.length
+        ? `<span class="detail-item active-agents">${activeAgents.map((agent) => {
+            const statusInfo = normalizeAgentStatus(agent.status);
+            return `<span class="agent-pill ${statusInfo.tone}">${escapeHtml(agent.label || agent.name)} · ${escapeHtml(statusInfo.label)}</span>`;
+          }).join("")}</span><span class="detail-item">Drafts: ${Number(agents.pending_count || 0)} open · ${Number(agents.queued_count || 0)} queued · ${Number(agents.claimed_count || 0)} claimed</span>`
+        : `<span class="detail-item">No MCP workers reported yet</span><span class="detail-item">Drafts: ${Number(agents.pending_count || 0)} open · ${Number(agents.queued_count || 0)} queued</span>`,
     );
     setStatus(wsStatusEl, streamConnected ? "Connected" : "Starting", streamConnected ? "ok" : "warn");
     setDetail(wsDetailEl, `WebSocket ${window.location.host}/ws/transcript`);
     const transcriberReady = Boolean(status.running);
-    const assistantReady = Boolean(assistant.ready);
+    const assistantReady = Boolean(agents.ready);
     const mcpReady = Boolean(mcp.mount_path && mcp.sdk_version);
-    const pipelineTone = transcriberReady && streamConnected && assistantReady && mcpReady
+    const pipelineTone = transcriberReady && streamConnected && mcpReady
       ? "ok"
-      : ((transcriberReady || streamConnected || assistantReady || mcpReady) ? "warn" : "bad");
-    const pipelineLabel = transcriberReady && streamConnected && assistantReady && mcpReady
-      ? "Voice to agent ready"
-      : "Partial readiness";
+      : ((transcriberReady || streamConnected || mcpReady) ? "warn" : "bad");
+    const pipelineLabel = transcriberReady && streamConnected && mcpReady
+      ? "Voice host ready"
+      : "Startup in progress";
     setStatus(pipelineStatusEl, pipelineLabel, pipelineTone);
     setDetail(
       pipelineDetailEl,
       [
         `Mic/STT ${transcriberReady ? "ok" : "waiting"}`,
         `UI stream ${streamConnected ? "ok" : "down"}`,
-        `AI ${assistantReady ? "ok" : "blocked"}`,
+        `Agents ${assistantReady ? "ok" : "waiting"}`,
         `MCP ${mcpReady ? "ok" : "down"}`,
       ],
     );
@@ -281,6 +481,7 @@ async function refreshStatus() {
     setDetail(inputLevelDetailEl, "Waiting for microphone signal");
   }
   renderTimeline();
+  renderRequests();
 }
 
 async function clearTimeline() {
@@ -288,75 +489,100 @@ async function clearTimeline() {
   try {
     const response = await fetch("/api/transcript/clear", { method: "POST" });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const message = await response.text();
+      throw new Error(`HTTP ${response.status}${message ? `: ${message}` : ""}`);
     }
     const snapshot = await response.json();
     applySnapshot(snapshot);
+    assistantProcessing = false;
+    sendingDraftIds = new Set();
+    refreshStatus();
   } catch (error) {
     console.error("Failed to clear timeline", error);
+    window.alert(`Failed to clear timeline: ${error.message || error}`);
   } finally {
     clearButtonEl.disabled = false;
   }
 }
 
-async function sendLatestTranscript() {
-  sendButtonEl.disabled = true;
-  assistantProcessing = true;
-  setStatus(assistantStatusEl, "Processing · openai", "warn");
-  setSpinner(assistantStatusEl, true);
-  renderTimeline();
-  try {
-    const response = await fetch("/api/assistant/send-latest", { method: "POST" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    await response.json();
-  } catch (error) {
-    console.error("Failed to send latest transcript", error);
-  } finally {
-    assistantProcessing = false;
-    sendButtonEl.disabled = false;
-    refreshStatus();
-    renderTimeline();
-  }
-}
-
 async function sendDraft(draftId) {
   sendingDraftIds = new Set(sendingDraftIds).add(draftId);
-  assistantProcessing = true;
   renderTimeline();
   try {
-    const response = await fetch(`/api/assistant/send-draft/${draftId}`, { method: "POST" });
+    const response = await fetch(`/api/drafts/${draftId}/queue`, { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     const payload = await response.json();
-    if (!payload.sent) {
-      const message = payload.reason || payload.error || "Draft send failed";
-      console.error("Failed to send draft", payload);
+    if (!payload.queued) {
+      const message = payload.reason || payload.error || "Draft queue failed";
+      console.error("Failed to queue draft", payload);
       window.alert(message);
+    } else {
+      const transcriptResponse = await fetch("/api/transcript");
+      if (transcriptResponse.ok) {
+        const snapshot = await transcriptResponse.json();
+        applySnapshot(snapshot);
+      }
     }
   } catch (error) {
-    console.error("Failed to send draft", error);
-    window.alert(`Failed to send draft: ${error.message || error}`);
+    console.error("Failed to queue draft", error);
+    window.alert(`Failed to queue draft: ${error.message || error}`);
   } finally {
     sendingDraftIds.delete(draftId);
-    assistantProcessing = false;
     refreshStatus();
     renderTimeline();
+    renderRequests();
+  }
+}
+
+async function delegateRequest(requestId, agentName) {
+  delegatingRequestIds = new Set(delegatingRequestIds).add(requestId);
+  renderRequests();
+  try {
+    const response = await fetch(`/api/requests/${requestId}/delegate/${encodeURIComponent(agentName)}`, { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    if (!payload.delegated) {
+      const message = payload.reason || payload.error || "Request delegation failed";
+      window.alert(message);
+    } else {
+      const transcriptResponse = await fetch("/api/transcript");
+      if (transcriptResponse.ok) {
+        const snapshot = await transcriptResponse.json();
+        applySnapshot(snapshot);
+      }
+    }
+  } catch (error) {
+    window.alert(`Failed to delegate request: ${error.message || error}`);
+  } finally {
+    delegatingRequestIds.delete(requestId);
+    refreshStatus();
+    renderRequests();
   }
 }
 
 function applySnapshot(state) {
   events.clear();
   utterances.clear();
+  requests.clear();
+  requestEvents.clear();
   for (const event of state.events || []) {
     events.set(event.event_id, event);
   }
   for (const utterance of state.utterances || []) {
     utterances.set(utterance.source_line_id, utterance);
   }
+  for (const request of state.requests || []) {
+    requests.set(request.request_id, request);
+  }
+  for (const requestEvent of state.request_events || []) {
+    requestEvents.set(requestEvent.event_id, requestEvent);
+  }
   renderTimeline();
+  renderRequests();
 }
 
 function connectTranscriptStream() {
@@ -388,7 +614,20 @@ function connectTranscriptStream() {
     if (payload.utterance) {
       utterances.set(payload.utterance.source_line_id, payload.utterance);
       renderTimeline();
+      renderRequests();
       refreshStatus();
+      return;
+    }
+    if (payload.request) {
+      requests.set(payload.request.request_id, payload.request);
+      renderRequests();
+      refreshStatus();
+      return;
+    }
+    if (payload.request_event) {
+      requestEvents.set(payload.request_event.event_id, payload.request_event);
+      renderTimeline();
+      renderRequests();
       return;
     }
     if (payload.event) {
@@ -404,5 +643,4 @@ function connectTranscriptStream() {
 refreshStatus();
 connectTranscriptStream();
 window.setInterval(refreshStatus, 4000);
-sendButtonEl.addEventListener("click", sendLatestTranscript);
 clearButtonEl.addEventListener("click", clearTimeline);

@@ -8,10 +8,7 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
-from app.agent_registry import AgentRegistry, DEFAULT_AGENT_TARGETS
-from app.agent_router import AgentRouter
-from app.agents import OpenAIProvider
-from app.commands import CommandResolver
+from app.agent_worker_manager import AgentWorkerManager
 from app.config import load_settings
 from app.conversation_service import ConversationService
 from app.mcp_server import MCP_RESOURCES, MCP_SERVER_NAME, MCP_TOOLS, create_mcp_server
@@ -28,30 +25,12 @@ store = TranscriptStore(
     history_limit=settings.transcript_history_limit,
 )
 moonshine = MoonshineService(settings=settings, store=store)
-providers = {}
-if settings.openai_api_key:
-    providers["openai"] = OpenAIProvider(
-        api_key=settings.openai_api_key,
-        model=settings.openai_model,
-        system_prompt=settings.openai_system_prompt,
-    )
-registry = AgentRegistry(DEFAULT_AGENT_TARGETS, providers)
-default_provider = registry.normalize(settings.default_provider) or settings.default_provider
-router = AgentRouter(
-    command_resolver=CommandResolver(
-        default_provider=default_provider,
-        aliases=registry.alias_map(),
-        known_providers=tuple(registry.known_target_names()),
-    ),
-    providers=registry.configured_providers(),
-)
 response_writer = ResponseWriter(store=store)
 conversation_service = ConversationService(
     store=store,
-    router=router,
     response_writer=response_writer,
-    history_events=settings.assistant_history_events,
 )
+agent_worker_manager = AgentWorkerManager(settings)
 mcp_server = create_mcp_server(store=store, moonshine=moonshine, conversation_service=conversation_service)
 mcp_app = mcp_server.http_app(path="/")
 logger = logging.getLogger(__name__)
@@ -64,24 +43,36 @@ def safe_package_version(name: str) -> str | None:
         return None
 
 
-def assistant_status() -> dict[str, object]:
+def agent_status() -> dict[str, object]:
     service_status = conversation_service.status()
-    configured_providers = registry.configured_target_names()
-    default_ready = default_provider in registry.configured_providers()
-    default_error = None
-    if not default_ready:
-        if default_provider == "openai" and not settings.openai_api_key:
-            default_error = "Missing OPENAI_API_KEY"
-        else:
-            default_error = f"Provider '{default_provider}' is not configured"
+    snapshot = store.snapshot()
+    agent_statuses = snapshot.get("agent_statuses", [])
+    connected_agents = [
+        agent
+        for agent in agent_statuses
+        if str(agent.get("status", "")).strip().lower() in {"ready", "working", "error"}
+    ]
+    current_agent_name = None
+    current_agent_label = None
+    for utterance in reversed(snapshot["utterances"]):
+        if utterance.get("kind") != "message":
+            continue
+        if utterance.get("status") != "claimed":
+            continue
+        current_agent_name = utterance.get("agent_name")
+        current_agent_label = utterance.get("agent_label")
+        break
     return {
-        "default_provider": default_provider,
-        "configured_providers": configured_providers,
-        "known_providers": registry.known_target_names(),
-        "ready": default_ready,
-        "error": default_error,
+        "mode": "mcp-first",
+        "ready": bool(connected_agents),
+        "active_agents": connected_agents,
+        "agent_count": len(connected_agents),
+        "current_agent_name": current_agent_name,
+        "current_agent_label": current_agent_label,
         "processing": service_status["processing"],
         "pending_count": service_status["pending_count"],
+        "queued_count": service_status["queued_count"],
+        "claimed_count": service_status["claimed_count"],
     }
 
 
@@ -103,7 +94,7 @@ def app_status() -> dict[str, object]:
         "name": "dubsar",
         "version": app_version,
         "fastapi_version": safe_package_version("fastapi"),
-        "openai_sdk_version": safe_package_version("openai"),
+        "httpx_version": safe_package_version("httpx"),
         "moonshine_version": safe_package_version("moonshine-voice"),
     }
 
@@ -124,6 +115,7 @@ async def lifespan(app: FastAPI):
         store.set_loop(asyncio.get_running_loop())
         store.load()
         await conversation_service.start()
+        await agent_worker_manager.start()
         try:
             moonshine.start()
         except Exception as exc:
@@ -132,6 +124,7 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            await agent_worker_manager.stop()
             await conversation_service.stop()
             moonshine.stop()
 
@@ -156,10 +149,10 @@ def health() -> dict[str, str]:
 @app.get("/api/status")
 def api_status() -> dict[str, object]:
     transcriber = moonshine.status()
-    assistant = assistant_status()
+    agents = agent_status()
     return {
         **transcriber,
-        "assistant": assistant,
+        "agents": agents,
         "app": app_status(),
         "mcp": mcp_status(),
         "storage": storage_status(),
@@ -188,14 +181,23 @@ def stop_transcriber() -> dict[str, object]:
     return moonshine.status()
 
 
-@app.post("/api/assistant/send-latest")
-async def send_latest_transcript() -> dict[str, object]:
-    return await conversation_service.send_latest()
+@app.post("/api/drafts/{draft_id}/queue")
+async def queue_draft(draft_id: int) -> dict[str, object]:
+    return await conversation_service.queue_draft(draft_id)
+
+
+@app.post("/api/requests/{request_id}/delegate/{agent_name}")
+async def delegate_request(request_id: int, agent_name: str) -> dict[str, object]:
+    return await conversation_service.delegate_request(
+        request_id,
+        target_agent_name=agent_name,
+        target_agent_label=agent_name,
+    )
 
 
 @app.post("/api/assistant/send-draft/{draft_id}")
-async def send_draft(draft_id: int) -> dict[str, object]:
-    return await conversation_service.submit_draft(draft_id)
+async def queue_draft_legacy(draft_id: int) -> dict[str, object]:
+    return await conversation_service.queue_draft(draft_id)
 
 
 @app.websocket("/ws/transcript")
@@ -206,7 +208,7 @@ async def transcript_ws(websocket: WebSocket) -> None:
         while True:
             payload = await queue.get()
             await websocket.send_json(payload)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         store.unsubscribe(queue)
