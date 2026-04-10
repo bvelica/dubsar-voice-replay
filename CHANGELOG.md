@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ### Changed
 
+- Renamed the public-facing app identity from `Dubsar` to `Dubsar Voice Relay` across the UI, docs, prompts, and status metadata while keeping the `dubsar://` MCP URI prefix stable
 - Removed spoken agent-routing commands from the live speech path; drafts are now submitted explicitly through the UI or external API/MCP callers
 - Removed implicit "latest draft" send endpoints and MCP tools in favor of explicit draft-ID-based submission
 - Cleared command-era UI labeling and restored an empty persisted transcript baseline

@@ -9,7 +9,7 @@ from app.conversation_service import ConversationService
 from app.moonshine_service import MoonshineService
 from app.transcript_store import TranscriptStore
 
-MCP_SERVER_NAME = "dubsar"
+MCP_SERVER_NAME = "Dubsar Voice Relay"
 MCP_RESOURCES = [
     "dubsar://status",
     "dubsar://snapshot",

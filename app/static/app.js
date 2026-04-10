@@ -120,7 +120,7 @@ function renderTimeline() {
       : "";
     const traceHtml = event.role === "user" && relatedRequestEvents.length
       ? `<div class="request-trace">${relatedRequestEvents.map((traceEvent) => {
-          const agent = traceEvent.agent_label || traceEvent.agent_name || "Dubsar";
+          const agent = traceEvent.agent_label || traceEvent.agent_name || "Dubsar Voice Relay";
           return `<div class="request-trace-item"><span class="request-trace-kind">${escapeHtml(traceEvent.kind)}</span><span class="request-trace-detail">${escapeHtml(traceEvent.detail)}</span><span class="request-trace-agent">${escapeHtml(agent)}</span></div>`;
         }).join("")}</div>`
       : "";
@@ -173,7 +173,7 @@ function renderRequests() {
         ${lineageLabel ? `<div class="line-submeta">${escapeHtml(lineageLabel)}</div>` : ""}
         <div class="line-text">${escapeHtml(request.text || "")}</div>
         ${traceEvents.length ? `<div class="request-trace">${traceEvents.map((traceEvent) => {
-          const agent = traceEvent.agent_label || traceEvent.agent_name || "Dubsar";
+          const agent = traceEvent.agent_label || traceEvent.agent_name || "Dubsar Voice Relay";
           return `<div class="request-trace-item"><span class="request-trace-kind">${escapeHtml(traceEvent.kind)}</span><span class="request-trace-detail">${escapeHtml(traceEvent.detail)}</span><span class="request-trace-agent">${escapeHtml(agent)}</span></div>`;
         }).join("")}</div>` : ""}
       </article>

@@ -30,8 +30,8 @@ Core areas:
 
 Current protocol and product identity:
 
-- FastAPI app title: `dubsar`
-- MCP server name: `dubsar`
+- FastAPI app title: `Dubsar Voice Relay`
+- MCP server name: `Dubsar Voice Relay`
 - MCP resource URI prefix: `dubsar://`
 
 ## Current Interaction Model

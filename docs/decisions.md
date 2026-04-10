@@ -222,3 +222,10 @@ This file records decisions that should persist across sessions.
 
 - Decision: Model delegation as explicit user-triggered child requests instead of agent-initiated hidden delegation.
 - Reason: The user should stay in control of when another agent is pulled in. Child requests keep delegation visible, traceable, and compatible with the request-centric observability model.
+
+## 2026-04-10
+
+### Public Product Name Update
+
+- Decision: Rename the public-facing app identity from `Dubsar` to `Dubsar Voice Relay`, while keeping the `dubsar://` MCP URI prefix stable for compatibility.
+- Reason: The new name is more descriptive in UI and documentation, and keeping the MCP URI prefix unchanged avoids an unnecessary protocol-level break.

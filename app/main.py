@@ -91,7 +91,7 @@ def mcp_status() -> dict[str, object]:
 
 def app_status() -> dict[str, object]:
     return {
-        "name": "dubsar",
+        "name": "Dubsar Voice Relay",
         "version": app_version,
         "fastapi_version": safe_package_version("fastapi"),
         "httpx_version": safe_package_version("httpx"),
@@ -130,7 +130,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="dubsar",
+    title="Dubsar Voice Relay",
     version=app_version,
     lifespan=lifespan,
 )

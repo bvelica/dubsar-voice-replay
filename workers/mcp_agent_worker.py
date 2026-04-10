@@ -45,7 +45,7 @@ def default_agent_identity(backend: str) -> tuple[str, str]:
 
 def parse_args() -> WorkerConfig:
     load_env()
-    parser = argparse.ArgumentParser(description="External MCP agent worker for dubsar.")
+    parser = argparse.ArgumentParser(description="External MCP agent worker for Dubsar Voice Relay.")
     parser.add_argument("--server-url", default=os.getenv("DUBSAR_MCP_URL", "http://127.0.0.1:8000/mcp/"))
     parser.add_argument("--backend", choices=("openai", "anthropic"), required=True)
     parser.add_argument("--agent-name")
@@ -61,7 +61,7 @@ def parse_args() -> WorkerConfig:
         model = args.model or os.getenv("OPENAI_MODEL", "gpt-5-mini")
         system_prompt = args.system_prompt or os.getenv(
             "OPENAI_SYSTEM_PROMPT",
-            "You are an external MCP agent connected to Dubsar. Reply clearly, directly, and briefly unless the user asks for more detail.",
+            "You are an external MCP agent connected to Dubsar Voice Relay. Reply clearly, directly, and briefly unless the user asks for more detail.",
         )
         return WorkerConfig(
             server_url=args.server_url,
@@ -78,7 +78,7 @@ def parse_args() -> WorkerConfig:
     model = args.model or os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
     system_prompt = args.system_prompt or os.getenv(
         "ANTHROPIC_SYSTEM_PROMPT",
-        "You are an external MCP agent connected to Dubsar. Reply clearly, directly, and briefly unless the user asks for more detail.",
+        "You are an external MCP agent connected to Dubsar Voice Relay. Reply clearly, directly, and briefly unless the user asks for more detail.",
     )
     return WorkerConfig(
         server_url=args.server_url,

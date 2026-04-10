@@ -1,1 +1,1 @@
-"""Application package for dubsar."""
+"""Application package for Dubsar Voice Relay."""

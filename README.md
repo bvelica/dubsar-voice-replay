@@ -1,6 +1,6 @@
-# Dubsar
+# Dubsar Voice Relay
 
-Dubsar is a local-first voice-to-agent host.
+Dubsar Voice Relay is a local-first voice-to-agent host.
 
 It captures microphone audio, transcribes English speech with Moonshine, groups finalized speech into requests, shows that live state in a small web UI, and exposes the same state through MCP so external AI agents can consume it and act on it.
 
@@ -16,7 +16,7 @@ It captures microphone audio, transcribes English speech with Moonshine, groups 
 
 The intended architecture is MCP-first:
 
-- Dubsar owns microphone capture, Moonshine transcription, request grouping, persistence, and UI
+- Dubsar Voice Relay owns microphone capture, Moonshine transcription, request grouping, persistence, and UI
 - MCP is the standard external interface over that live state
 - AI agents such as ChatGPT, Claude, Gemini, or Codex-like workers are treated as external MCP clients
 - the web app remains the human-facing monitor and manual control surface
@@ -48,7 +48,7 @@ AUTO_START_OPENAI_AGENT=1
 AUTO_START_ANTHROPIC_AGENT=1
 ```
 
-If a provider key exists, Dubsar will start that external MCP worker automatically on app startup by default. You can disable one explicitly by setting its `AUTO_START_...` flag to `0`.
+If a provider key exists, Dubsar Voice Relay will start that external MCP worker automatically on app startup by default. You can disable one explicitly by setting its `AUTO_START_...` flag to `0`.
 
 Download the default English Moonshine model into the repo-local cache:
 
@@ -77,7 +77,7 @@ venv/bin/python workers/mcp_agent_worker.py --backend anthropic
 
 1. Speak normally.
 2. Moonshine may finalize that speech in multiple chunks.
-3. Dubsar groups those chunks into one open request.
+3. Dubsar Voice Relay groups those chunks into one open request.
 4. The web UI shows the pending request and recent conversation timeline.
 5. Queue the request with its `Queue` button.
 6. Optionally delegate that request to a connected agent, which creates a queued child request targeted at that agent.
@@ -90,8 +90,8 @@ If a request fails, it stays visible and can be retried.
 ## Intended MCP-First Flow
 
 1. The microphone feeds Moonshine locally.
-2. Moonshine writes transcript updates into Dubsar's shared store.
-3. Dubsar exposes requests, timeline events, and status through MCP.
+2. Moonshine writes transcript updates into Dubsar Voice Relay's shared store.
+3. Dubsar Voice Relay exposes requests, timeline events, and status through MCP.
 4. External AI agents connect as MCP clients.
 5. Those agents read pending requests, decide what to do, and write replies or status updates back through MCP.
 6. The web UI shows the same shared state so the whole interaction remains visible.

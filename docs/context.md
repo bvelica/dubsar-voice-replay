@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-`dubsar` is a local-first voice-to-agent host.
+`Dubsar Voice Relay` is a local-first voice-to-agent host.
 
 The intended flow is:
 
@@ -62,7 +62,7 @@ The current interaction model is:
 - Current implementation path: host-native `sounddevice` microphone capture feeding Moonshine's streaming transcriber
 - Frontend delivery path: FastAPI serves a small index shell plus static HTML/CSS/JS assets from `app/static/`
 - Current external-agent reference path: `workers/mcp_agent_worker.py` connects to the mounted MCP endpoint and calls model APIs from a separate process
-- Agent startup model: Dubsar auto-starts configured external MCP workers from `.env` on app startup
+- Agent startup model: Dubsar Voice Relay auto-starts configured external MCP workers from `.env` on app startup
 
 ## Release Tracking
 
