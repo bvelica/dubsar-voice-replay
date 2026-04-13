@@ -26,6 +26,10 @@ MCP_TOOLS = [
     "stop_transcriber",
     "clear_transcript",
     "set_agent_status",
+    "queue_request",
+    "claim_request",
+    "complete_request",
+    "fail_request",
     "queue_draft",
     "delegate_request",
     "claim_draft",
@@ -134,6 +138,11 @@ def create_mcp_server(*, store: TranscriptStore, moonshine: MoonshineService, co
         return store.set_agent_status(name=agent_name, status=status, label=label, detail=detail)
 
     @mcp.tool
+    async def queue_request(request_id: int) -> dict[str, Any]:
+        """Queue a specific request for MCP agents."""
+        return await conversation_service.queue_request(request_id)
+
+    @mcp.tool
     async def queue_draft(draft_id: int) -> dict[str, Any]:
         """Queue a specific request by legacy draft identifier."""
         return await conversation_service.queue_draft(draft_id)
@@ -154,9 +163,24 @@ def create_mcp_server(*, store: TranscriptStore, moonshine: MoonshineService, co
         )
 
     @mcp.tool
+    async def claim_request(request_id: int, agent_name: str, agent_label: str | None = None) -> dict[str, Any]:
+        """Claim a queued request."""
+        return await conversation_service.claim_request(request_id, agent_name=agent_name, agent_label=agent_label)
+
+    @mcp.tool
     async def claim_draft(draft_id: int, agent_name: str, agent_label: str | None = None) -> dict[str, Any]:
         """Claim a queued request by legacy draft identifier."""
         return await conversation_service.claim_draft(draft_id, agent_name=agent_name, agent_label=agent_label)
+
+    @mcp.tool
+    async def complete_request(request_id: int, agent_name: str, text: str, agent_label: str | None = None) -> dict[str, Any]:
+        """Complete a claimed request by appending an agent reply to the timeline."""
+        return await conversation_service.complete_request(
+            request_id,
+            agent_name=agent_name,
+            agent_label=agent_label,
+            text=text,
+        )
 
     @mcp.tool
     async def complete_draft(draft_id: int, agent_name: str, text: str, agent_label: str | None = None) -> dict[str, Any]:
@@ -166,6 +190,16 @@ def create_mcp_server(*, store: TranscriptStore, moonshine: MoonshineService, co
             agent_name=agent_name,
             agent_label=agent_label,
             text=text,
+        )
+
+    @mcp.tool
+    async def fail_request(request_id: int, agent_name: str, error: str, agent_label: str | None = None) -> dict[str, Any]:
+        """Mark a claimed request as failed for a specific external agent."""
+        return await conversation_service.fail_request(
+            request_id,
+            agent_name=agent_name,
+            agent_label=agent_label,
+            error=error,
         )
 
     @mcp.tool

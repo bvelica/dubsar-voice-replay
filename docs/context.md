@@ -27,19 +27,20 @@ The current direction should prioritize:
 - visibility into what agents read, do, and write back
 - provider-agnostic agent participation through MCP
 - a conservative action model
-- user-triggered delegation via child requests instead of hidden autonomous delegation
+- explicit user-directed routing without hidden autonomous delegation
 
 The current interaction model is:
 
 1. The user speaks naturally.
-2. Moonshine may finalize that speech in multiple chunks.
-3. The app groups those finalized chunks into one open request/thought.
-4. That request remains pending until the user explicitly queues it.
-5. The web UI shows requests, trace events, and explicit `Queue` and `Delegate` actions.
-6. MCP exposes queued requests and conversation state to external agent clients.
-7. External agents, such as the repo's MCP worker process, claim queued requests and append replies or failures back through MCP.
-8. Delegation is user-triggered and creates a child request linked to the parent request instead of letting agents silently delegate on their own.
-9. The main visibility unit is now `request_id`, which groups one user thought across one or more finalized Moonshine chunks.
+2. The user starts the utterance with a configured agent-slot alias when they want to direct a request to a specific agent.
+3. Moonshine may finalize that speech in multiple chunks.
+4. The app should group those finalized chunks into one targeted request/thought even when the user speaks slowly and pauses.
+5. That request should be routed based on the leading agent command rather than a later button press.
+6. After a short idle pause, that targeted request should auto-queue.
+7. MCP exposes requests and conversation state to external agent clients.
+8. The targeted external agent claims the request and appends a reply or failure back through MCP.
+9. That reply stays in the shared conversation timeline so the user can ask another configured slot to confirm, challenge, or expand on it.
+10. The main visibility unit is `request_id`, which groups one user thought across one or more finalized Moonshine chunks.
 
 ## Constraints
 
@@ -63,6 +64,7 @@ The current interaction model is:
 - Frontend delivery path: FastAPI serves a small index shell plus static HTML/CSS/JS assets from `app/static/`
 - Current external-agent reference path: `workers/mcp_agent_worker.py` connects to the mounted MCP endpoint and calls model APIs from a separate process
 - Agent startup model: Dubsar Voice Relay auto-starts configured external MCP workers from `.env` on app startup
+- Spoken routing model: configurable agent slots loaded from typed settings and `.env`, so the user can choose stable aliases such as `Agent 1` and `Agent 2`
 
 ## Release Tracking
 
@@ -75,9 +77,9 @@ The current interaction model is:
 - Whether browser-based audio capture should be added after the initial local microphone version
 - How rich the utterance lifecycle tracking should be in the UI and MCP surface
 - What MCP should expose next beyond the current basics: agent/task lifecycle, claiming, delegation, or some combination
-- What the first concrete external-agent action model should be
+- What the exact close/submit rule should be for a spoken request after a leading agent command when Moonshine produces multiple finalized chunks
 - How rich the per-request trace UI should become beyond the current compact lifecycle view
-- How much child-request detail should be shown inline versus behind a collapsible trace
+- Whether explicit child requests should remain only for follow-up verification tasks rather than normal first-hop routing
 - Whether a separate stdio bridge should be added for MCP clients that cannot connect to the local HTTP endpoint
 - How far to push lifecycle detail into the store versus keeping some agent state ephemeral on the MCP clients
 - When to add Gemini or other model systems as first-class external MCP clients

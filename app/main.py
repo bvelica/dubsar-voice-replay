@@ -23,12 +23,14 @@ app_version = settings.project_root.joinpath("VERSION").read_text(encoding="utf-
 store = TranscriptStore(
     persistence_path=settings.transcript_store_path,
     history_limit=settings.transcript_history_limit,
+    agent_slots=settings.agent_slots,
 )
 moonshine = MoonshineService(settings=settings, store=store)
 response_writer = ResponseWriter(store=store)
 conversation_service = ConversationService(
     store=store,
     response_writer=response_writer,
+    voice_request_idle_seconds=settings.voice_request_idle_seconds,
 )
 agent_worker_manager = AgentWorkerManager(settings)
 mcp_server = create_mcp_server(store=store, moonshine=moonshine, conversation_service=conversation_service)
@@ -66,6 +68,14 @@ def agent_status() -> dict[str, object]:
         "mode": "mcp-first",
         "ready": bool(connected_agents),
         "active_agents": connected_agents,
+        "configured_slots": [
+            {
+                "label": slot.label,
+                "target_agent_name": slot.target_agent_name,
+                "aliases": list(slot.aliases),
+            }
+            for slot in settings.agent_slots
+        ],
         "agent_count": len(connected_agents),
         "current_agent_name": current_agent_name,
         "current_agent_label": current_agent_label,
@@ -198,6 +208,11 @@ async def delegate_request(request_id: int, agent_name: str) -> dict[str, object
 @app.post("/api/assistant/send-draft/{draft_id}")
 async def queue_draft_legacy(draft_id: int) -> dict[str, object]:
     return await conversation_service.queue_draft(draft_id)
+
+
+@app.post("/api/requests/{request_id}/queue")
+async def queue_request(request_id: int) -> dict[str, object]:
+    return await conversation_service.queue_request(request_id)
 
 
 @app.websocket("/ws/transcript")

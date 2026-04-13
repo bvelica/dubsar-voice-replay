@@ -4,7 +4,9 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from time import monotonic
 
+from app.config import AgentSlotSettings
 from app.conversation_service import ConversationService
 from app.response_writer import ResponseWriter
 from app.transcript_store import TranscriptStore
@@ -16,10 +18,25 @@ class ConversationServiceTests(unittest.TestCase):
         self.store = TranscriptStore(
             persistence_path=Path(self.tempdir.name) / "transcript_history.json",
             history_limit=10,
+            agent_slots=[
+                AgentSlotSettings(
+                    enabled=True,
+                    target_agent_name="chatgpt",
+                    label="Agent 1",
+                    aliases=["agent one", "one", "gpt"],
+                ),
+                AgentSlotSettings(
+                    enabled=True,
+                    target_agent_name="claude",
+                    label="Agent 2",
+                    aliases=["agent two", "two", "claude"],
+                ),
+            ],
         )
         self.service = ConversationService(
             store=self.store,
             response_writer=ResponseWriter(self.store),
+            voice_request_idle_seconds=0.05,
         )
 
     def tearDown(self) -> None:
@@ -47,6 +64,34 @@ class ConversationServiceTests(unittest.TestCase):
         self.assertEqual(len(utterances), 2)
         self.assertEqual({utterance["draft_id"] for utterance in utterances}, {1})
         self.assertTrue(all(utterance["status"] == "pending" for utterance in utterances))
+
+    def test_leading_agent_prefix_targets_request_and_strips_command_text(self) -> None:
+        self._complete_line(1, "Agent one, what is")
+        self._complete_line(2, "the capital of France?")
+
+        snapshot = self.store.snapshot()
+        request = snapshot["requests"][0]
+
+        self.assertEqual(request["request_id"], 1)
+        self.assertEqual(request["target_agent_name"], "chatgpt")
+        self.assertEqual(request["target_agent_label"], "Agent 1")
+        self.assertEqual(request["text"], "what is the capital of France?")
+        self.assertEqual(
+            [utterance["text"] for utterance in snapshot["utterances"]],
+            ["what is", "the capital of France?"],
+        )
+
+    def test_targeted_request_auto_queues_after_idle(self) -> None:
+        self._complete_line(1, "Agent two, is Paris the capital of France?")
+
+        snapshot = self.store.snapshot()
+        request = snapshot["requests"][0]
+        self.service._request_activity[1] = (request["updated_seq"], monotonic() - 5.0)
+
+        asyncio.run(self.service._auto_queue_targeted_requests())
+
+        updated_request = self.store.snapshot()["requests"][0]
+        self.assertEqual(updated_request["status"], "queued")
 
     def test_queue_and_complete_draft_updates_timeline(self) -> None:
         self._complete_line(1, "What is")
@@ -102,6 +147,20 @@ class ConversationServiceTests(unittest.TestCase):
         self.assertEqual(utterance["error"], "Claude could not verify the claim.")
         self.assertEqual(snapshot["request_events"][-1]["kind"], "agent_failed")
 
+    def test_only_claiming_agent_can_complete_request(self) -> None:
+        self._complete_line(1, "Agent one, what is the capital of France?")
+        request = self.store.snapshot()["requests"][0]
+        self.service._request_activity[1] = (request["updated_seq"], monotonic() - 5.0)
+        asyncio.run(self.service._auto_queue_targeted_requests())
+        asyncio.run(self.service.claim_request(1, agent_name="chatgpt", agent_label="ChatGPT"))
+
+        result = asyncio.run(
+            self.service.complete_request(1, agent_name="claude", agent_label="Claude", text="Paris.")
+        )
+
+        self.assertFalse(result["completed"])
+        self.assertEqual(result["reason"], "Request is claimed by another agent")
+
     def test_delegate_request_creates_child_request(self) -> None:
         self._complete_line(1, "What is the capital of Netherlands?")
 
@@ -120,7 +179,7 @@ class ConversationServiceTests(unittest.TestCase):
         self.assertEqual(child["parent_request_id"], 1)
         self.assertEqual(child["target_agent_name"], "claude")
         self.assertEqual(child["status"], "queued")
-        self.assertEqual(snapshot["request_events"][-1]["kind"], "subrequest_queued")
+        self.assertEqual(snapshot["request_events"][-1]["kind"], "request_queued")
 
     def test_targeted_child_request_can_only_be_claimed_by_target_agent(self) -> None:
         self._complete_line(1, "Check this statement")
@@ -134,7 +193,7 @@ class ConversationServiceTests(unittest.TestCase):
 
         wrong_claim = asyncio.run(self.service.claim_draft(2, agent_name="chatgpt", agent_label="ChatGPT"))
         self.assertFalse(wrong_claim["claimed"])
-        self.assertIn("delegated to Claude", wrong_claim["reason"])
+        self.assertIn("routed to Claude", wrong_claim["reason"])
 
         right_claim = asyncio.run(self.service.claim_draft(2, agent_name="claude", agent_label="Claude"))
         self.assertTrue(right_claim["claimed"])

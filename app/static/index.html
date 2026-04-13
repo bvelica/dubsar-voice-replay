@@ -47,12 +47,24 @@
         </div>
       </section>
       <div class="timeline-header">
+        <div class="helper-copy">
+          <span class="label">Current Flow</span>
+          <div id="routing-help" class="detail">
+            <span class="detail-item">Say the configured slot name first, for example: `Agent 1, ...`</span>
+            <span class="detail-item">Targeted requests auto-queue after a short pause. `Queue Now` is only a fallback.</span>
+          </div>
+        </div>
         <button id="clear-button" class="button" type="button">Clear</button>
       </div>
       <section class="requests-header">
         <span class="label">Requests</span>
+        <div class="detail">Targeted speech requests and their agent lifecycle.</div>
       </section>
       <section id="requests"></section>
+      <section class="requests-header">
+        <span class="label">Conversation</span>
+        <div class="detail">Shared user and agent history for later verification.</div>
+      </section>
       <section id="lines"></section>
     </main>
   </body>

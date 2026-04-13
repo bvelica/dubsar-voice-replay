@@ -48,6 +48,22 @@ AUTO_START_OPENAI_AGENT=1
 AUTO_START_ANTHROPIC_AGENT=1
 ```
 
+Configure spoken routing slots in `.env` using nested settings keys. Up to 5 slots are supported:
+
+```env
+AGENT_SLOT_1__ENABLED=1
+AGENT_SLOT_1__TARGET_AGENT_NAME=chatgpt
+AGENT_SLOT_1__LABEL=Agent 1
+AGENT_SLOT_1__ALIASES=["agent one","one","gpt"]
+
+AGENT_SLOT_2__ENABLED=1
+AGENT_SLOT_2__TARGET_AGENT_NAME=claude
+AGENT_SLOT_2__LABEL=Agent 2
+AGENT_SLOT_2__ALIASES=["agent two","two","claude"]
+```
+
+This keeps the spoken command layer configurable. The user can say `Agent 1, ...` or any configured alias instead of depending on hardcoded vendor names in code.
+
 If a provider key exists, Dubsar Voice Relay will start that external MCP worker automatically on app startup by default. You can disable one explicitly by setting its `AUTO_START_...` flag to `0`.
 
 Download the default English Moonshine model into the repo-local cache:
@@ -73,19 +89,26 @@ venv/bin/python workers/mcp_agent_worker.py --backend openai
 venv/bin/python workers/mcp_agent_worker.py --backend anthropic
 ```
 
-## Current Interaction Model
+## Intended Interaction Model
 
-1. Speak normally.
-2. Moonshine may finalize that speech in multiple chunks.
-3. Dubsar Voice Relay groups those chunks into one open request.
-4. The web UI shows the pending request and recent conversation timeline.
-5. Queue the request with its `Queue` button.
-6. Optionally delegate that request to a connected agent, which creates a queued child request targeted at that agent.
-7. External MCP agents can then claim queued requests and write replies or failures back into the shared timeline.
+1. Start the utterance with a configured agent-slot alias, such as `Agent 1 ...` or `Agent 2 ...`.
+2. Speak naturally after that prefix.
+3. Moonshine may finalize the speech in multiple chunks if the user pauses.
+4. Dubsar Voice Relay should keep grouping those chunks into one targeted request while the user is still on the same thought.
+5. After a short idle pause, the targeted request is queued automatically.
+6. The targeted agent claims it and replies.
+7. That reply is appended to the shared conversation timeline and remains visible to other agents.
+8. The user can then ask another agent to confirm, verify, or challenge the earlier reply by starting the next utterance with that other slot's alias.
 
-Each queued thought is tracked as a `request_id`. One request can contain multiple finalized Moonshine chunks, and the UI shows a per-request trace so you can see when it was created, updated, queued, delegated, claimed, completed, or failed. Delegation creates a child request linked back to the parent request.
+Example flow:
 
-If a request fails, it stays visible and can be retried.
+- `Agent 1, what is the capital of France?`
+- `Agent 2, is Agent 1 correct?`
+- `Agent 2, please confirm whether Paris is the capital of France.`
+
+Each spoken thought is tracked as a `request_id`. One request can contain multiple finalized Moonshine chunks, and the conversation timeline is shared across agents so later requests can reference earlier replies naturally.
+
+The current implementation still keeps a manual `Queue Now` fallback in the UI, but targeted spoken requests now route from configured leading aliases in the backend and auto-queue after a short idle pause.
 
 ## Intended MCP-First Flow
 

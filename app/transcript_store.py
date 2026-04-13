@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from app.config import AgentSlotSettings
 
 
 @dataclass
@@ -168,9 +171,10 @@ class RequestEvent:
 
 
 class TranscriptStore:
-    def __init__(self, persistence_path: Path, history_limit: int) -> None:
+    def __init__(self, persistence_path: Path, history_limit: int, agent_slots: list[AgentSlotSettings] | None = None) -> None:
         self._persistence_path = persistence_path
         self._history_limit = history_limit
+        self._configured_agent_slots = list(agent_slots or [])
         self._lock = threading.Lock()
         self._lines: dict[int, TranscriptLineState] = {}
         self._ordered_ids: list[int] = []
@@ -709,11 +713,13 @@ class TranscriptStore:
         utterance = self._utterances.get(line_id)
         if utterance is None and not is_complete:
             return None
+        clean_text, target_agent_name, target_agent_label, explicit_target = self._parse_targeted_text_locked(text)
         if utterance is None:
-            request_id = self._next_open_request_id_locked()
+            request_id = self._next_request_id_locked() if explicit_target else self._next_open_request_id_locked()
+            existing_request = request_id in self._requests
             utterance = UtteranceState(
                 source_line_id=line_id,
-                text=text,
+                text=clean_text,
                 status="pending",
                 kind="message",
                 request_id=request_id,
@@ -722,19 +728,41 @@ class TranscriptStore:
             )
             self._utterances[line_id] = utterance
             self._ordered_utterance_ids.append(line_id)
-            existing_request = request_id in self._requests
+            if explicit_target:
+                self._requests[request_id] = RequestState(
+                    request_id=request_id,
+                    text=clean_text,
+                    status="pending",
+                    created_seq=self._seq,
+                    updated_seq=self._seq,
+                    source_line_ids=[],
+                    origin="speech",
+                    target_agent_name=target_agent_name,
+                    target_agent_label=target_agent_label,
+                )
+                self._ordered_request_ids.append(request_id)
             self._sync_request_from_utterances_locked(request_id)
             self._append_request_event_locked(
                 request_id=request_id,
                 kind="request_updated" if existing_request else "request_created",
-                detail="Request updated with another finalized speech chunk." if existing_request else "Request created from finalized speech.",
+                detail=(
+                    "Request updated with another finalized speech chunk."
+                    if existing_request
+                    else (
+                        f"Request created from targeted speech for {target_agent_label or target_agent_name}."
+                        if explicit_target
+                        else "Request created from finalized speech."
+                    )
+                ),
                 source_line_ids=self._request_source_line_ids_locked(request_id),
+                agent_name=target_agent_name if explicit_target else None,
+                agent_label=target_agent_label if explicit_target else None,
             )
         else:
             updated_status = utterance.status if utterance.status != "failed" else "pending"
             utterance = UtteranceState(
                 source_line_id=utterance.source_line_id,
-                text=text,
+                text=clean_text,
                 status=updated_status,
                 kind=utterance.kind,
                 request_id=utterance.request_id,
@@ -786,6 +814,9 @@ class TranscriptStore:
             utterance = self._utterances[source_line_id]
             if utterance.kind == "message" and utterance.status == "pending" and isinstance(utterance.request_id, int):
                 return utterance.request_id
+        return self._next_request_id_locked()
+
+    def _next_request_id_locked(self) -> int:
         self._next_request_id += 1
         return self._next_request_id
 
@@ -821,6 +852,54 @@ class TranscriptStore:
         self._requests[request_id] = request
         if request_id not in self._ordered_request_ids:
             self._ordered_request_ids.append(request_id)
+
+    def _parse_targeted_text_locked(self, text: str) -> tuple[str, str | None, str | None, bool]:
+        stripped = text.strip()
+        if not stripped:
+            return "", None, None, False
+        for alias, agent_name, agent_label in self._known_agent_targets_locked():
+            pattern = rf"^\s*{re.escape(alias)}(?:\s*[,:\-]\s*|\s+)(?P<rest>.+)$"
+            match = re.match(pattern, text, flags=re.IGNORECASE)
+            if not match:
+                continue
+            rest = match.group("rest").strip()
+            if not rest:
+                continue
+            return rest, agent_name, agent_label, True
+        return stripped, None, None, False
+
+    def _known_agent_targets_locked(self) -> list[tuple[str, str, str]]:
+        known: dict[str, tuple[str, str]] = {}
+        for slot in self._configured_agent_slots:
+            target_agent_name = slot.target_agent_name.strip().lower()
+            label = slot.label.strip() or target_agent_name
+            if not target_agent_name:
+                continue
+            for alias in slot.aliases:
+                normalized_alias = alias.strip().lower()
+                if normalized_alias:
+                    known.setdefault(normalized_alias, (target_agent_name, label))
+            spoken_slot_alias = label.strip().lower()
+            if spoken_slot_alias:
+                known.setdefault(spoken_slot_alias, (target_agent_name, label))
+            if target_agent_name:
+                known.setdefault(target_agent_name, (target_agent_name, label))
+        for agent_state in self._agent_statuses.values():
+            normalized_name = agent_state.name.strip().lower()
+            if not normalized_name:
+                continue
+            label = (agent_state.label or agent_state.name).strip() or agent_state.name
+            label_lower = label.lower()
+            known.setdefault(normalized_name, (normalized_name, label))
+            known.setdefault(label_lower, (normalized_name, label))
+            if " " in label_lower:
+                known.setdefault(label_lower.replace(" ", ""), (normalized_name, label))
+                known.setdefault(f"agent {label_lower}", (normalized_name, label))
+            known.setdefault(f"agent {normalized_name}", (normalized_name, label))
+        return [
+            (alias, agent_name, agent_label)
+            for alias, (agent_name, agent_label) in sorted(known.items(), key=lambda item: len(item[0]), reverse=True)
+        ]
 
     def _append_request_event_locked(
         self,

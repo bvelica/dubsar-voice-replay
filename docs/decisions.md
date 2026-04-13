@@ -229,3 +229,30 @@ This file records decisions that should persist across sessions.
 
 - Decision: Rename the public-facing app identity from `Dubsar` to `Dubsar Voice Relay`, while keeping the `dubsar://` MCP URI prefix stable for compatibility.
 - Reason: The new name is more descriptive in UI and documentation, and keeping the MCP URI prefix unchanged avoids an unnecessary protocol-level break.
+
+## 2026-04-13
+
+### Leading Voice Routing Command
+
+- Decision: Route a spoken request based on an agent command at the beginning of the utterance, such as `ChatGPT ...` or `Claude ...`.
+- Reason: The user wants to speak one continuous thought slowly, allow Moonshine to split it into multiple finalized chunks, and still have the whole thought belong to one targeted request without needing a later UI delegation button.
+
+### Shared Reply Context Across Agents
+
+- Decision: Keep agent replies in the shared conversation timeline so later requests to another agent can explicitly ask for confirmation or validation of an earlier reply.
+- Reason: Cross-agent confirmation is a core use case. A later request such as asking Agent Y to verify Agent X's answer only works cleanly if the earlier reply is part of the shared visible context.
+
+### Child Requests Reserved For Explicit Follow-Up Work
+
+- Decision: Do not use child requests as the default first-hop routing mechanism for normal targeted questions; reserve them for explicit follow-up or verification tasks when that distinction is useful.
+- Reason: Creating a child request for every ordinary send muddies the workflow and separates the agent's actual answer from the user's original speech request.
+
+### Idle Auto-Queue For Targeted Speech
+
+- Decision: Auto-queue a targeted spoken request after a short idle pause instead of requiring a later button press.
+- Reason: Moonshine may split slow speech into multiple finalized chunks. A short idle delay lets the app keep collecting one spoken thought and still route it automatically once the user stops speaking.
+
+### Configurable Agent Slots
+
+- Decision: Replace hardcoded spoken vendor names with up to five configurable agent slots loaded from typed settings and `.env`.
+- Reason: The spoken command layer should not require code changes every time a new MCP agent is added. Configurable slots let the user choose reliable aliases such as `Agent 1` and `Agent 2` while keeping backend target names separate from speech parsing.

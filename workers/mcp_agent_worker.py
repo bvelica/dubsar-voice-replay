@@ -221,9 +221,9 @@ async def run_worker(config: WorkerConfig) -> None:
                             if not isinstance(request_id, int):
                                 continue
                             claim_result = await client.call_tool(
-                                "claim_draft",
+                                "claim_request",
                                 {
-                                    "draft_id": request_id,
+                                    "request_id": request_id,
                                     "agent_name": config.agent_name,
                                     "agent_label": config.agent_label,
                                 },
@@ -259,9 +259,9 @@ async def run_worker(config: WorkerConfig) -> None:
                             try:
                                 reply_text = await generate_reply(config, prompt=prompt, conversation=conversation)
                                 await client.call_tool(
-                                    "complete_draft",
+                                    "complete_request",
                                     {
-                                        "draft_id": request_id,
+                                        "request_id": request_id,
                                         "agent_name": config.agent_name,
                                         "agent_label": config.agent_label,
                                         "text": reply_text,
@@ -278,9 +278,9 @@ async def run_worker(config: WorkerConfig) -> None:
                                 )
                             except Exception as exc:
                                 await client.call_tool(
-                                    "fail_draft",
+                                    "fail_request",
                                     {
-                                        "draft_id": request_id,
+                                        "request_id": request_id,
                                         "agent_name": config.agent_name,
                                         "agent_label": config.agent_label,
                                         "error": str(exc),

@@ -8,6 +8,10 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ### Changed
 
+## [0.3.0] - 2026-04-13
+
+### Changed
+
 - Renamed the public-facing app identity from `Dubsar` to `Dubsar Voice Relay` across the UI, docs, prompts, and status metadata while keeping the `dubsar://` MCP URI prefix stable
 - Removed spoken agent-routing commands from the live speech path; drafts are now submitted explicitly through the UI or external API/MCP callers
 - Removed implicit "latest draft" send endpoints and MCP tools in favor of explicit draft-ID-based submission
@@ -20,6 +24,15 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 - Auto-started configured OpenAI and Anthropic MCP workers from `.env` on app startup so the app is usable without launching extra terminals
 - Added a request-centric trace model with visible `request_id` values and explicit request lifecycle events across the store, MCP resources, tests, and UI timeline
 - Added user-triggered delegation through child requests, targeted-agent claiming rules, and a dedicated requests panel in the UI so parent and child request activity stays visible
+- Updated the product docs to make the next interaction-model refactor explicit: agent-routing commands belong at the beginning of the spoken utterance, replies stay in shared conversation context, and child requests should no longer be the default path for ordinary first-hop routing
+- Implemented leading-agent voice routing in the backend so speech like `ChatGPT ...` or `Claude ...` creates targeted requests with the command stripped from request text
+- Added automatic queueing for targeted spoken requests after a short idle pause so slow Moonshine chunking can still collapse into one routed request
+- Tightened request completion and failure rules so only the agent that claimed a request can finish it
+- Added request-first MCP tool names alongside legacy draft aliases and moved the reference MCP worker onto the request-first naming path
+- Replaced hardcoded spoken agent names with configurable `.env`-driven agent slots so aliases like `Agent 1` and `Agent 2` can be mapped to any MCP agent target without code changes
+- Updated README and architecture/context docs to define the next voice-first routing model around leading agent commands such as `ChatGPT ...` and `Claude ...`
+- Recorded the decision that shared agent replies must remain visible to other agents for later verification and cross-checking
+- Clarified that child requests should be reserved for explicit follow-up verification work rather than normal first-hop request routing
 
 ## [0.2.0] - 2026-04-01
 

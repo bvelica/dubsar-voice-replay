@@ -15,12 +15,12 @@ const assistantDetailEl = document.getElementById("assistant-detail");
 const pipelineStatusEl = document.getElementById("pipeline-status");
 const pipelineDetailEl = document.getElementById("pipeline-detail");
 const requestsEl = document.getElementById("requests");
+const routingHelpEl = document.getElementById("routing-help");
 const events = new Map();
 const utterances = new Map();
 const requests = new Map();
 const requestEvents = new Map();
 let sendingDraftIds = new Set();
-let delegatingRequestIds = new Set();
 let streamConnected = false;
 let assistantProcessing = false;
 let currentAssistantProvider = "-";
@@ -54,6 +54,31 @@ function setDetail(el, text) {
 
 function setHtmlDetail(el, html) {
   el.innerHTML = html || "";
+}
+
+function renderRoutingHelp(configuredSlots) {
+  if (!routingHelpEl) {
+    return;
+  }
+  if (!Array.isArray(configuredSlots) || !configuredSlots.length) {
+    setHtmlDetail(
+      routingHelpEl,
+      "<span class=\"detail-item\">Say the configured slot name first, for example: `Agent 1, ...`</span><span class=\"detail-item\">Targeted requests auto-queue after a short pause. `Queue Now` is only a fallback.</span>",
+    );
+    return;
+  }
+  const slotExamples = configuredSlots
+    .slice(0, 3)
+    .map((slot) => {
+      const alias = Array.isArray(slot.aliases) && slot.aliases.length ? slot.aliases[0] : slot.label;
+      const label = slot.label || slot.target_agent_name || alias;
+      return `${escapeHtml(label)} -> ${escapeHtml(alias)}`;
+    })
+    .join(" · ");
+  setHtmlDetail(
+    routingHelpEl,
+    `<span class="detail-item">Say the configured slot name first. Slots: ${slotExamples}</span><span class="detail-item">Targeted requests auto-queue after a short pause. \`Queue Now\` is only a fallback.</span>`,
+  );
 }
 
 function normalizeAgentStatus(value) {
@@ -94,6 +119,9 @@ function renderTimeline() {
     const utterance = event.role === "user" && Number.isInteger(event.draft_source_line_id)
       ? utterances.get(event.draft_source_line_id)
       : null;
+    const request = event.role === "user" && Number.isInteger(event.request_id)
+      ? requests.get(event.request_id) || null
+      : null;
     const relatedAssistant = event.role === "user" && Number.isInteger(event.draft_source_line_id)
       ? assistantRepliesBySourceLineId.get(event.draft_source_line_id) || null
       : null;
@@ -106,17 +134,17 @@ function renderTimeline() {
     const label = event.role === "assistant"
       ? (event.agent_name ? `Assistant · ${escapeHtml(event.agent_name)}` : "Assistant")
       : describeUserEventLabel(event, utterance, relatedAssistant);
-    const canSend = Boolean(
+    const canQueue = Boolean(
       utterance &&
       utterance.kind === "message" &&
       ["pending", "failed"].includes(utterance.status || "") &&
       Number.isInteger(event.draft_id)
     );
-    const actionHtml = canSend
-      ? `<div class="line-actions"><button class="line-button" type="button" data-send-draft-id="${event.draft_id}" ${sendingDraftIds.has(event.draft_id) ? "disabled" : ""}>Queue</button></div>`
+    const actionHtml = canQueue
+      ? `<div class="line-actions"><button class="line-button secondary" type="button" data-queue-request-id="${event.draft_id}" ${sendingDraftIds.has(event.draft_id) ? "disabled" : ""}>Queue Now</button></div>`
       : "";
     const requestMetaHtml = event.role === "user" && Number.isInteger(event.request_id)
-      ? `<div class="line-submeta">Request ${event.request_id}${event.source_line_ids.length ? ` · lines ${event.source_line_ids.join(", ")}` : ""}</div>`
+      ? `<div class="line-submeta">Request ${event.request_id}${request?.target_agent_label ? ` · target ${escapeHtml(request.target_agent_label)}` : ""}${event.source_line_ids.length ? ` · lines ${event.source_line_ids.join(", ")}` : ""}</div>`
       : "";
     const traceHtml = event.role === "user" && relatedRequestEvents.length
       ? `<div class="request-trace">${relatedRequestEvents.map((traceEvent) => {
@@ -150,11 +178,8 @@ function renderRequests() {
   requestsEl.innerHTML = ordered.map((request) => {
     const traceEvents = requestEventsByRequestId.get(request.request_id) || [];
     const canQueue = ["pending", "failed"].includes(request.status || "");
-    const delegateButtons = currentActiveAgents
-      .filter((agent) => (agent.name || "").trim().toLowerCase() !== String(request.target_agent_name || "").trim().toLowerCase())
-      .map((agent) => `<button class="line-button secondary" type="button" data-delegate-request-id="${request.request_id}" data-agent-name="${escapeHtml(agent.name)}" ${delegatingRequestIds.has(request.request_id) ? "disabled" : ""}>Delegate to ${escapeHtml(agent.label || agent.name)}</button>`)
-      .join("");
-    const statusLabel = `${request.status || "pending"}${request.agent_label ? ` · ${escapeHtml(request.agent_label)}` : ""}${request.target_agent_label ? ` · target ${escapeHtml(request.target_agent_label)}` : ""}`;
+    const statusTone = requestStatusTone(request.status);
+    const statusLabel = `${formatRequestStatus(request.status)}${request.agent_label ? ` · ${escapeHtml(request.agent_label)}` : ""}${request.target_agent_label ? ` · target ${escapeHtml(request.target_agent_label)}` : ""}`;
     const lineageLabel = [
       request.origin || "speech",
       Number.isInteger(request.parent_request_id) ? `child of ${request.parent_request_id}` : null,
@@ -165,11 +190,10 @@ function renderRequests() {
         <div class="line-head">
           <div class="line-meta">Request ${request.request_id}</div>
           <div class="line-actions">
-            ${canQueue ? `<button class="line-button" type="button" data-send-draft-id="${request.request_id}" ${sendingDraftIds.has(request.request_id) ? "disabled" : ""}>Queue</button>` : ""}
-            ${delegateButtons}
+            ${canQueue ? `<button class="line-button secondary" type="button" data-queue-request-id="${request.request_id}" ${sendingDraftIds.has(request.request_id) ? "disabled" : ""}>Queue Now</button>` : ""}
           </div>
         </div>
-        <div class="line-submeta">${statusLabel}</div>
+        <div class="line-submeta"><span class="status-chip ${statusTone}">${statusLabel}</span></div>
         ${lineageLabel ? `<div class="line-submeta">${escapeHtml(lineageLabel)}</div>` : ""}
         <div class="line-text">${escapeHtml(request.text || "")}</div>
         ${traceEvents.length ? `<div class="request-trace">${traceEvents.map((traceEvent) => {
@@ -335,6 +359,40 @@ function describeUserEventLabel(event, utterance, relatedAssistant) {
   return `You · request ${utterance.request_id ?? utterance.draft_id}`;
 }
 
+function formatRequestStatus(status) {
+  const normalized = String(status || "pending").trim().toLowerCase();
+  if (normalized === "pending") {
+    return "listening";
+  }
+  if (normalized === "queued") {
+    return "queued";
+  }
+  if (normalized === "claimed") {
+    return "working";
+  }
+  if (normalized === "completed") {
+    return "completed";
+  }
+  if (normalized === "failed") {
+    return "failed";
+  }
+  return normalized || "unknown";
+}
+
+function requestStatusTone(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "completed") {
+    return "ok";
+  }
+  if (normalized === "failed") {
+    return "bad";
+  }
+  if (normalized === "queued" || normalized === "claimed") {
+    return "warn";
+  }
+  return "muted";
+}
+
 function escapeHtml(value) {
   return value
     .replaceAll("&", "&amp;")
@@ -343,28 +401,19 @@ function escapeHtml(value) {
 }
 
 function bindLineActions() {
-  for (const button of linesEl.querySelectorAll("[data-send-draft-id]")) {
+  for (const button of linesEl.querySelectorAll("[data-queue-request-id]")) {
     button.addEventListener("click", () => {
-      const draftId = Number(button.dataset.sendDraftId);
-      if (Number.isInteger(draftId)) {
-        sendDraft(draftId);
+      const requestId = Number(button.dataset.queueRequestId);
+      if (Number.isInteger(requestId)) {
+        queueRequestNow(requestId);
       }
     });
   }
-  for (const button of requestsEl.querySelectorAll("[data-send-draft-id]")) {
+  for (const button of requestsEl.querySelectorAll("[data-queue-request-id]")) {
     button.addEventListener("click", () => {
-      const draftId = Number(button.dataset.sendDraftId);
-      if (Number.isInteger(draftId)) {
-        sendDraft(draftId);
-      }
-    });
-  }
-  for (const button of requestsEl.querySelectorAll("[data-delegate-request-id]")) {
-    button.addEventListener("click", () => {
-      const requestId = Number(button.dataset.delegateRequestId);
-      const agentName = String(button.dataset.agentName || "").trim();
-      if (Number.isInteger(requestId) && agentName) {
-        delegateRequest(requestId, agentName);
+      const requestId = Number(button.dataset.queueRequestId);
+      if (Number.isInteger(requestId)) {
+        queueRequestNow(requestId);
       }
     });
   }
@@ -378,7 +427,9 @@ async function refreshStatus() {
     const mcp = status.mcp || {};
     const agents = status.agents || {};
     const activeAgents = Array.isArray(agents.active_agents) ? agents.active_agents : [];
+    const configuredSlots = Array.isArray(agents.configured_slots) ? agents.configured_slots : [];
     currentActiveAgents = activeAgents;
+    renderRoutingHelp(configuredSlots);
     setStatus(appStatusEl, `${app.name || "app"} ${app.version || ""}`.trim(), "ok");
     setDetail(
       appDetailEl,
@@ -440,8 +491,8 @@ async function refreshStatus() {
         ? `<span class="detail-item active-agents">${activeAgents.map((agent) => {
             const statusInfo = normalizeAgentStatus(agent.status);
             return `<span class="agent-pill ${statusInfo.tone}">${escapeHtml(agent.label || agent.name)} · ${escapeHtml(statusInfo.label)}</span>`;
-          }).join("")}</span><span class="detail-item">Drafts: ${Number(agents.pending_count || 0)} open · ${Number(agents.queued_count || 0)} queued · ${Number(agents.claimed_count || 0)} claimed</span>`
-        : `<span class="detail-item">No MCP workers reported yet</span><span class="detail-item">Drafts: ${Number(agents.pending_count || 0)} open · ${Number(agents.queued_count || 0)} queued</span>`,
+          }).join("")}</span><span class="detail-item">Requests: ${Number(agents.pending_count || 0)} listening · ${Number(agents.queued_count || 0)} queued · ${Number(agents.claimed_count || 0)} working</span>`
+        : `<span class="detail-item">No MCP workers reported yet</span><span class="detail-item">Requests: ${Number(agents.pending_count || 0)} listening · ${Number(agents.queued_count || 0)} queued</span>`,
     );
     setStatus(wsStatusEl, streamConnected ? "Connected" : "Starting", streamConnected ? "ok" : "warn");
     setDetail(wsDetailEl, `WebSocket ${window.location.host}/ws/transcript`);
@@ -505,18 +556,19 @@ async function clearTimeline() {
   }
 }
 
-async function sendDraft(draftId) {
-  sendingDraftIds = new Set(sendingDraftIds).add(draftId);
+async function queueRequestNow(requestId) {
+  sendingDraftIds = new Set(sendingDraftIds).add(requestId);
   renderTimeline();
+  renderRequests();
   try {
-    const response = await fetch(`/api/drafts/${draftId}/queue`, { method: "POST" });
+    const response = await fetch(`/api/requests/${requestId}/queue`, { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     const payload = await response.json();
     if (!payload.queued) {
-      const message = payload.reason || payload.error || "Draft queue failed";
-      console.error("Failed to queue draft", payload);
+      const message = payload.reason || payload.error || "Request queue failed";
+      console.error("Failed to queue request", payload);
       window.alert(message);
     } else {
       const transcriptResponse = await fetch("/api/transcript");
@@ -526,40 +578,12 @@ async function sendDraft(draftId) {
       }
     }
   } catch (error) {
-    console.error("Failed to queue draft", error);
-    window.alert(`Failed to queue draft: ${error.message || error}`);
+    console.error("Failed to queue request", error);
+    window.alert(`Failed to queue request: ${error.message || error}`);
   } finally {
-    sendingDraftIds.delete(draftId);
+    sendingDraftIds.delete(requestId);
     refreshStatus();
     renderTimeline();
-    renderRequests();
-  }
-}
-
-async function delegateRequest(requestId, agentName) {
-  delegatingRequestIds = new Set(delegatingRequestIds).add(requestId);
-  renderRequests();
-  try {
-    const response = await fetch(`/api/requests/${requestId}/delegate/${encodeURIComponent(agentName)}`, { method: "POST" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    if (!payload.delegated) {
-      const message = payload.reason || payload.error || "Request delegation failed";
-      window.alert(message);
-    } else {
-      const transcriptResponse = await fetch("/api/transcript");
-      if (transcriptResponse.ok) {
-        const snapshot = await transcriptResponse.json();
-        applySnapshot(snapshot);
-      }
-    }
-  } catch (error) {
-    window.alert(`Failed to delegate request: ${error.message || error}`);
-  } finally {
-    delegatingRequestIds.delete(requestId);
-    refreshStatus();
     renderRequests();
   }
 }

@@ -38,13 +38,14 @@ Current protocol and product identity:
 
 1. The microphone feeds Moonshine through `app/moonshine_service.py`.
 2. Finalized transcript chunks are written into `app/transcript_store.py` as utterance records plus timeline events.
-3. Consecutive message utterances are grouped into one open request/thought.
-4. The current request remains pending until the user explicitly queues it.
-5. `app/conversation_service.py` queues the request when the user presses a request-level `Queue` button or when an external API or MCP caller queues it.
-6. The user can explicitly delegate a request to another connected agent, which creates a child request targeted at that agent.
-7. An external MCP agent can then claim that queued request and write an assistant reply or failure back into the same timeline.
-8. The UI and MCP surfaces observe the same shared state.
-9. Explicit request lifecycle events are appended alongside state changes so the system exposes both current state and workflow history.
+3. Consecutive message utterances should be grouped into one open request/thought.
+4. The first words of the utterance should determine the target configured agent slot, for example `Agent 1 ...` or `Agent 2 ...`.
+5. That target should stay attached to the request while later Moonshine-finalized chunks continue to extend the same request.
+6. After a short idle pause, the targeted request should queue automatically.
+7. The targeted MCP agent should claim it and write an assistant reply or failure back into the same shared timeline.
+8. Later requests can target a different agent and use that shared timeline as context for confirmation or verification.
+9. The UI and MCP surfaces observe the same shared state.
+10. Explicit request lifecycle events are appended alongside state changes so the system exposes both current state and workflow history.
 
 ## Intended MCP-First Event Flow
 
@@ -70,17 +71,19 @@ The intended next architecture step is:
 
 - keep FastAPI as the host runtime for UI, MCP mount, and local APIs
 - keep `TranscriptStore` as the single shared source of truth
-- keep request submission explicit while the agent interaction model is being refined
+- treat a leading spoken agent-slot alias as request-routing metadata rather than prompt content
 - group multiple transcript chunks into one request/thought until the user closes that thought
 - treat MCP as the standard interface for outside agents
 - keep agent participation, replies, and later delegation out of the in-process reply loop
-- add an explicit request lifecycle so one thought can later be observed, claimed, delegated, acted on, and completed by external agents
+- add an explicit request lifecycle so one thought can later be observed, claimed, verified by another agent, acted on, and completed by external agents
 
 Near-term implementation direction:
 
-- keep the current request-based interaction model stable
+- replace button-first routing with voice-first routing based on a leading agent command
+- auto-queue targeted spoken requests after a short idle pause so slow multi-chunk speech still lands as one request
 - expand MCP resources and tools until external agents can participate with richer lifecycle visibility
 - use a separate worker process as the default integration pattern for OpenAI- and Anthropic-backed external agents
+- keep spoken routing aliases in typed settings rather than hardcoding vendor names into the parser
 - further separate frontend concerns inside `app/static/` so status rendering, timeline rendering, websocket transport, and agent activity views are easier to evolve independently
 
 ## Design Bias
